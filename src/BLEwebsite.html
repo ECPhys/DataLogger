@@ -1,0 +1,247 @@
+<!--
+  Rui Santos
+  Complete project details at https://RandomNerdTutorials.com/esp32-web-bluetooth/
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files.
+  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+-->
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESP32 Web BLE App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/png" href="favicon.ico">
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <meta charset="UTF-8">
+</head>
+<body>
+    <div class="topnav">
+        <h1>ESP32 Web BLE Application</h1>
+    </div>
+    <div class="content">
+        <div class="card-grid">
+            <div class="card">
+                <p>
+                    <button id="connectBleButton" class="connectButton"> Connect to BLE Device</button>
+                    <button id="disconnectBleButton" class="disconnectButton"> Disconnect BLE Device</button>
+                </p>
+                <p class="gray-label">BLE state: <strong><span id="bleState" style="color:#d13a30;">Disconnected</span></strong></p>
+            </div>
+        </div>
+        <div class="card-grid">
+            <div class="card">
+                <h2>Temperature</h2>
+                <p class="reading"><span id="valueContainer">NaN</span></p>
+                <p class="gray-label">Last reading: <span id="timestamp"></span></p>
+            </div>
+
+            <div class="card">
+                <h2>Time</h2>
+                <p class="reading"><span id="timeValueContainer">NaN</span></p>
+                <button id="resetTimeButton" class="onButton">Reset Time</button>
+                <p class="gray-label">Last value sent: <span id="timeValueSent"></span></p>
+            </div>
+        </div>
+    </div>
+    <div class="footer">
+        <p><a href="https://randomnerdtutorials.com/">Created by RandomNerdTutorials.com</a></p>
+        <p><a href="https://RandomNerdTutorials.com/esp32-web-bluetooth/">Read the full project here.</a></p>
+    </div>
+</body>
+<script>
+    // DOM Elements
+    const connectButton = document.getElementById('connectBleButton');
+    const disconnectButton = document.getElementById('disconnectBleButton');
+    const retrievedValue = document.getElementById('valueContainer');
+    const timestampContainer = document.getElementById('timestamp');
+    const timeValueContainer = document.getElementById('timeValueContainer');
+    const resetTimeButton = document.getElementById('resetTimeButton');
+    const timeValueSent = document.getElementById('timeValueSent');
+    const bleStateContainer = document.getElementById('bleState');
+
+    //Define BLE Device Specs
+    const deviceName = 'TempLogger';
+    const bleService = '1e85414a-a5f0-4976-92a1-bce08f690857';
+    const TempCharacteristic = '7a5a3d88-e7d4-49f6-a6ac-2f1579c93c80';
+    const TimeCharacteristic = '22671dbe-1ce2-4f41-959a-8ccb81fdd7f7';
+
+    //Global Variables to Handle Bluetooth
+    var bleServer;
+    var bleServiceFound;
+    var sensorCharacteristicFound;
+
+    // Connect Button (search for BLE Devices only if BLE is available)
+    connectButton.addEventListener('click', (event) => {
+        if (isWebBluetoothEnabled()){
+            connectToDevice();
+        }
+    });
+
+    // Disconnect Button
+    disconnectButton.addEventListener('click', disconnectDevice);
+
+    // Write to the ESP32 Time Characteristic
+    resetTimeButton.addEventListener('click', () => writeOnCharacteristic(0));
+
+    // Check if BLE is available in your Browser
+    function isWebBluetoothEnabled() {
+        if (!navigator.bluetooth) {
+            console.log('Web Bluetooth API is not available in this browser!');
+            bleStateContainer.innerHTML = "Web Bluetooth API is not available in this browser/device!";
+            return false
+        }
+        console.log('Web Bluetooth API supported in this browser.');
+        return true
+    }
+
+    // Connect to BLE Device and Enable Notifications
+    function connectToDevice() {
+        console.log('Initializing Bluetooth...');
+        navigator.bluetooth.requestDevice({
+            filters: [{ name: deviceName }],
+            optionalServices: [bleService]
+        })
+        .then(device => {
+            console.log('Device Selected:', device.name);
+            bleStateContainer.innerHTML = 'Connected to device ' + device.name;
+            bleStateContainer.style.color = "#24af37";
+            device.addEventListener('gattservicedisconnected', onDisconnected);
+            return device.gatt.connect();
+        })
+        .then(gattServer => {
+            bleServer = gattServer;
+            console.log("Connected to GATT Server");
+            return bleServer.getPrimaryService(bleService);
+        })
+        .then(service => {
+            bleServiceFound = service;
+            console.log("Service discovered:", service.uuid);
+            return service.getCharacteristic(TempCharacteristic);
+        })
+        .then(characteristic => {
+            console.log("Temperature Characteristic discovered:", characteristic.uuid);
+            sensorCharacteristicFound = characteristic;
+            characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicChange);
+            characteristic.startNotifications();
+            console.log("Temperature Notifications Started.");
+            return characteristic.readValue();
+        })
+        .then(value => {
+            console.log("Read temperature value: ", value);
+            const decodedValue = new TextDecoder().decode(value);
+            console.log("Decoded temperature value: ", decodedValue);
+            retrievedValue.innerHTML = decodedValue;
+            // Now get the TimeCharacteristic
+            return bleServiceFound.getCharacteristic(TimeCharacteristic);
+        })
+        .then(timeCharacteristic => {
+            console.log("Time Characteristic discovered:", timeCharacteristic.uuid);
+            timeCharacteristic.addEventListener('characteristicvaluechanged', handleTimeCharacteristicChange);
+            timeCharacteristic.startNotifications();
+            console.log("Time Notifications Started.");
+            return timeCharacteristic.readValue();
+        })
+        .then(timeValue => {
+            console.log("Read time value: ", timeValue);
+            const decodedTimeValue = new TextDecoder().decode(timeValue);
+            console.log("Decoded time value: ", decodedTimeValue);
+            timeValueContainer.innerHTML = decodedTimeValue;
+        })
+        .catch(error => {
+            console.log('Error: ', error);
+        });
+    }
+    
+    function handleTimeCharacteristicChange(event) {
+        const newTimeValueReceived = new TextDecoder().decode(event.target.value);
+        console.log("Time characteristic value changed: ", newTimeValueReceived);
+        timeValueContainer.innerHTML = newTimeValueReceived;
+    }
+
+    function onDisconnected(event){
+        console.log('Device Disconnected:', event.target.device.name);
+        bleStateContainer.innerHTML = "Device disconnected";
+        bleStateContainer.style.color = "#d13a30";
+
+        connectToDevice();
+    }
+
+    function handleCharacteristicChange(event){
+        const newValueReceived = new TextDecoder().decode(event.target.value);
+        console.log("Characteristic value changed: ", newValueReceived);
+        retrievedValue.innerHTML = newValueReceived;
+        timestampContainer.innerHTML = getDateTime();
+    }
+
+    // Write to the ESP32 Time Characteristic
+    function writeOnCharacteristic(value) {
+        if (bleServer && bleServer.connected) {
+            bleServiceFound.getCharacteristic(TimeCharacteristic)
+            .then(characteristic => {
+                console.log("Found the Time characteristic: ", characteristic.uuid);
+                const data = new Uint8Array([value]);
+                return characteristic.writeValue(data);
+            })
+            .then(() => {
+                timeValueSent.innerHTML = value;
+                console.log("Value written to Time characteristic:", value);
+            })
+            .catch(error => {
+                console.error("Error writing to the Time characteristic: ", error);
+            });
+        } else {
+            console.error("Bluetooth is not connected. Cannot write to characteristic.");
+            window.alert("Bluetooth is not connected. Cannot write to characteristic. \n Connect to BLE first!");
+        }
+    }
+    
+     // Reset Button Event Listener
+        resetTimeButton.addEventListener('click', () => writeOnCharacteristic(0));
+    
+
+    function disconnectDevice() {
+        console.log("Disconnect Device.");
+        if (bleServer && bleServer.connected) {
+            if (sensorCharacteristicFound) {
+                sensorCharacteristicFound.stopNotifications()
+                    .then(() => {
+                        console.log("Notifications Stopped");
+                        return bleServer.disconnect();
+                    })
+                    .then(() => {
+                        console.log("Device Disconnected");
+                        bleStateContainer.innerHTML = "Device Disconnected";
+                        bleStateContainer.style.color = "#d13a30";
+
+                    })
+                    .catch(error => {
+                        console.log("An error occurred:", error);
+                    });
+            } else {
+                console.log("No characteristic found to disconnect.");
+            }
+        } else {
+            // Throw an error if Bluetooth is not connected
+            console.error("Bluetooth is not connected.");
+            window.alert("Bluetooth is not connected.")
+        }
+    }
+
+    function getDateTime() {
+        var currentdate = new Date();
+        var day = ("00" + currentdate.getDate()).slice(-2); // Convert day to string and slice
+        var month = ("00" + (currentdate.getMonth() + 1)).slice(-2);
+        var year = currentdate.getFullYear();
+        var hours = ("00" + currentdate.getHours()).slice(-2);
+        var minutes = ("00" + currentdate.getMinutes()).slice(-2);
+        var seconds = ("00" + currentdate.getSeconds()).slice(-2);
+
+        var datetime = day + "/" + month + "/" + year + " at " + hours + ":" + minutes + ":" + seconds;
+        return datetime;
+    }
+
+
+</script>
+
+</html>
