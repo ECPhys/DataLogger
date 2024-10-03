@@ -1,9 +1,21 @@
 Datalogger project
+Steps taken so far:
+1. Bought M5stickC Plus 2 for £18
+    - Runs on ESP32 processor
+    - Wifi and bluetooth
+    - Mic, buzzer, screen, accelerometer, IR LED 200mAh battery, USBC connection, Grove port
+2. Installed Visual Studio Code 
+    - C++ extension for programming in C++
+    - Signed up to Github Education for a free Github Copilot extension
+3. Intalled PlatformIO which is a way of connecting VSCode to the ESP32
+4. Tried an example from randomNerdTutorials for BLE Sensors   
+    Sensor sketch
+        Bluetooth Low Energy (BLE) libraries used
+    HTML file opened in browser
+    CSS file for styling the HTML
+5. Temperature probe connected
+    DS18b20 temperature probe using
+        Onewire library
+        Dallas Sensors library
+6. Installed Git on the computer and synced this project with a github repository online
 
-Description of the device
-
-
-Sensors
-
-
-Desired functionality
