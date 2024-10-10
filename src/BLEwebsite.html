@@ -14,11 +14,13 @@
     <link rel="icon" type="image/png" href="favicon.ico">
     <link rel="stylesheet" type="text/css" href="style.css">
     <meta charset="UTF-8">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="topnav">
         <h1>ESP32 Web BLE Application</h1>
     </div>
+    
     <div class="content">
         <div class="card-grid">
             <div class="card">
@@ -29,20 +31,31 @@
                 <p class="gray-label">BLE state: <strong><span id="bleState" style="color:#d13a30;">Disconnected</span></strong></p>
             </div>
         </div>
-        <div class="card-grid">
-            <div class="card">
-                <h2>Temperature</h2>
-                <p class="reading"><span id="valueContainer">NaN</span></p>
-                <p class="gray-label">Last reading: <span id="timestamp"></span></p>
-            </div>
-
-            <div class="card">
-                <h2>Time</h2>
-                <p class="reading"><span id="timeValueContainer">NaN</span></p>
-                <button id="resetTimeButton" class="onButton">Reset Time</button>
-                <p class="gray-label">Last value sent: <span id="timeValueSent"></span></p>
-            </div>
+        <div class="card-grid"></div>
+        <div class="card">
+            <h2>Temperature 1</h2>
+            <canvas id="temperatureChart" width="400" height="200"></canvas>
         </div>
+            <!-- <p class="reading"><span id="valueContainer1">NaN</span></p>
+            <p class="gray-label">Last reading: <span id="timestamp1"></span></p>
+        
+
+        </div>
+    
+        <div class="card">
+            <h2>Temperature 2</h2>
+            <p class="reading"><span id="valueContainer2">NaN</span></p>
+            <p class="gray-label">Last reading: <span id="timestamp2"></span></p>
+        </div>
+    
+        <div class="card">
+            <h2>Time</h2>
+            <p class="reading"><span id="timeValueContainer">NaN</span></p>
+            <button id="resetTimeButton" class="onButton">Reset Time</button>
+            <p class="gray-label">Last value sent: <span id="timeValueSent"></span></p>
+        </div>
+        
+        </div> -->   
     </div>
     <div class="footer">
         <p><a href="https://randomnerdtutorials.com/">Created by RandomNerdTutorials.com</a></p>
@@ -50,6 +63,42 @@
     </div>
 </body>
 <script>
+    //Chart script
+    var ctx = document.getElementById('temperatureChart').getContext('2d');
+        var temperatureChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], // Time labels
+                datasets: [{
+                    label: 'Temperature 1',
+                    data: [], // Temperature data
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1,
+                    fill: false
+                }]
+            },
+            options: {
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'minute'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    
+    // Function to update the chart with new data
+    function updateChart(timestamp, temperature) {
+    temperatureChart.data.labels.push(timestamp);
+    temperatureChart.data.datasets[0].data.push(temperature);
+    temperatureChart.update();
+    }
+
     // DOM Elements
     const connectButton = document.getElementById('connectBleButton');
     const disconnectButton = document.getElementById('disconnectBleButton');
@@ -131,11 +180,30 @@
             console.log("Read temperature value: ", value);
             const decodedValue = new TextDecoder().decode(value);
             console.log("Decoded temperature value: ", decodedValue);
-            retrievedValue.innerHTML = decodedValue;
-            // Now get the TimeCharacteristic
+            
+            // Assuming the incoming value is a comma-separated string of two temperatures
+            const temperatures = decodedValue.split(',');
+            if (temperatures.length === 2) {
+            const temp1 = temperatures[0];
+            const temp2 = temperatures[1];
+            
+            // Update the respective containers
+            document.getElementById('valueContainer1').innerHTML = temp1;
+            document.getElementById('valueContainer2').innerHTML = temp2;
+            
+            // Update the timestamps
+            document.getElementById('timestamp1').innerHTML = getDateTime();
+            document.getElementById('timestamp2').innerHTML = getDateTime();
+            } else {
+            console.error("Unexpected temperature format: ", decodedValue);
+            }
             return bleServiceFound.getCharacteristic(TimeCharacteristic);
         })
+        
+        
         .then(timeCharacteristic => {
+            // Now get the TimeCharacteristic
+            //return bleServiceFound.getCharacteristic(TimeCharacteristic);
             console.log("Time Characteristic discovered:", timeCharacteristic.uuid);
             timeCharacteristic.addEventListener('characteristicvaluechanged', handleTimeCharacteristicChange);
             timeCharacteristic.startNotifications();
@@ -170,8 +238,24 @@
     function handleCharacteristicChange(event){
         const newValueReceived = new TextDecoder().decode(event.target.value);
         console.log("Characteristic value changed: ", newValueReceived);
-        retrievedValue.innerHTML = newValueReceived;
-        timestampContainer.innerHTML = getDateTime();
+
+        // Assuming the incoming value is a comma-separated string of two temperatures
+        const temperatures = newValueReceived.split(',');
+        if (temperatures.length === 2) {
+            const temp1 = temperatures[0];
+            const temp2 = temperatures[1];
+
+            // Update the respective containers
+            //document.getElementById('valueContainer1').innerHTML = temp1;
+            //document.getElementById('valueContainer2').innerHTML = temp2;
+
+            // Update the timestamps
+            //document.getElementById('timestamp1').innerHTML = getDateTime();
+            //document.getElementById('timestamp2').innerHTML = getDateTime();
+            updateChart(getDateTime(), temp1);
+        } else {
+            console.error("Unexpected temperature format: ", newValueReceived);
+        }
     }
 
     // Write to the ESP32 Time Characteristic
@@ -241,7 +325,7 @@
         return datetime;
     }
 
-
+    
 </script>
 
 </html>

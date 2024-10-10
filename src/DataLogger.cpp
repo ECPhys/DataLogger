@@ -236,9 +236,9 @@ void loop() {
             canvas.setCursor(10, 23+(i*23));
             canvas.setTextColor(TFT_CYAN);
             canvas.setTextSize(3);canvas.print("T");
-            canvas.setTextSize(2);canvas.print(i);
+            canvas.setTextSize(2);canvas.print(i+1);
             canvas.setTextSize(3);canvas.print(":");
-            canvas.setTextSize(3);canvas.printf("%.1f", temperature[i]+1);
+            canvas.setTextSize(3);canvas.printf("%.1f", temperature[i]);
         }
 
         canvas.setTextColor(TFT_WHITE);
@@ -260,10 +260,12 @@ void loop() {
         sensors.requestTemperatures();
 
         // Update BLE Characteristics
-        pTempCharacteristic->setValue(String(temperature[0]).c_str());
+        pTempCharacteristic->setValue((String(temperature[0]) + "," + String(temperature[1])).c_str());
         
 
-        pTimeCharacteristic->setValue((std::to_string(hours) + " : " + std::to_string(minutes) + " : " + std::to_string(seconds)).c_str());
+        pTimeCharacteristic->setValue((std::string(hours < 10 ? "0" : "") + std::to_string(hours) + " : " +
+                           std::string(minutes < 10 ? "0" : "") + std::to_string(minutes) + " : " +
+                           std::string(seconds < 10 ? "0" : "") + std::to_string(seconds)).c_str());
 
         if(deviceConnected) {
             pTempCharacteristic->notify();
