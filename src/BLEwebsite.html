@@ -1,41 +1,39 @@
-<!--
-  Rui Santos
-  Complete project details at https://RandomNerdTutorials.com/esp32-web-bluetooth/
-
-  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files.
-  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
--->
-
 <!DOCTYPE html>
 <html>
 <head>
-    <title>ESP32 Web BLE App</title>
+    <title>Datalogger</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="icon" type="image/png" href="favicon.ico">
+    <!-- <link rel="icon" type="image/png" href="favicon.ico"> -->
     <link rel="stylesheet" type="text/css" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap" rel="stylesheet">
     <meta charset="UTF-8">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 </head>
 <body>
     <div class="topnav">
-        <h1>ESP32 Web BLE Application</h1>
+        <h1>DataLogger</h1>
+        <div class="controls">
+            <button id="connectBleButton" class="connectButton">Connect</button>        
+            <button id="playPauseButton" class="playPauseButton">Play</button>
+            <button id="resetTimeButton" class="resetButton">Reset</button>
+            <button id="downloadCsvButton" class="downloadButton">Download</button>
+        </div>
     </div>
     
     <div class="content">
-        <div class="card-grid">
+        <div class="card-grid" style="display: grid; grid-template-columns: 1fr 4fr; gap: 10px;">
             <div class="card">
-                <p>
-                    <button id="connectBleButton" class="connectButton"> Connect to BLE Device</button>
-                    <button id="disconnectBleButton" class="disconnectButton"> Disconnect BLE Device</button>
-                </p>
-                <p class="gray-label">BLE state: <strong><span id="bleState" style="color:#d13a30;">Disconnected</span></strong></p>
+                <h2>Sensor Data</h2>
+                <p class="reading"><span id="sensorDataContainer">NaN</span></p>
+                <p class="gray-label">Last reading: <span id="sensorTimestamp"></span></p>
+            </div>
+            <div class="chart-container">
+                <h2>Time Graph</h2>
+                <canvas id="timeChart"></canvas>
             </div>
         </div>
-        <div class="card-grid"></div>
-        <div class="card">
-            <h2>Temperature 1</h2>
-            <canvas id="temperatureChart" width="400" height="200"></canvas>
-        </div>
+    </div>
             <!-- <p class="reading"><span id="valueContainer1">NaN</span></p>
             <p class="gray-label">Last reading: <span id="timestamp1"></span></p>
         
@@ -57,92 +55,186 @@
         
         </div> -->   
     </div>
-    <div class="footer">
-        <p><a href="https://randomnerdtutorials.com/">Created by RandomNerdTutorials.com</a></p>
-        <p><a href="https://RandomNerdTutorials.com/esp32-web-bluetooth/">Read the full project here.</a></p>
-    </div>
+    
 </body>
 <script>
-    //Chart script
-    var ctx = document.getElementById('temperatureChart').getContext('2d');
-        var temperatureChart = new Chart(ctx, {
-            type: 'line',
+    //------------------ variables and declarations------------------
+
+    //Time variables
+    var time = 0;   //millis
+    var timestamp = 0; //Date
+    var timeInterval = 0; //millis
+    var running = false;
+    var hours = 0;
+    var minutes = 0;
+    var seconds = 0;
+    
+
+    //graph variables
+    var Quantity = "";
+    var Unit = "";
+    var numberOfSensors = 0;
+    var dataPoint = 0;
+    
+    //sensor variables
+    var sensorData = [];
+    var BLEconnectionState = false;
+
+    
+    // DOM Elements
+    const connectButton = document.getElementById('connectBleButton');
+    const playPauseButton = document.getElementById('playPauseButton');
+    const resetButton = document.getElementById('resetTimeButton');
+    const ControlValueSent = document.getElementById('ControlValueSent');
+    //const bleStateContainer = document.getElementById('bleState');
+    
+    document.getElementById('downloadCsvButton').addEventListener('click', downloadCsv);
+
+    //DOM Elements if displaying single values
+    //const retrievedValue = document.getElementById('valueContainer');
+    //const timestampContainer = document.getElementById('timestamp1');
+    //const timeValueContainer = document.getElementById('timeValueContainer');
+    
+
+    //--------------------------Chart script--------------------------
+    var ctx = document.getElementById('timeChart').getContext('2d');
+        var timeChart = new Chart(ctx, {
+            type: 'scatter',
             data: {
                 labels: [], // Time labels
-                datasets: [{
-                    label: 'Temperature 1',
-                    data: [], // Temperature data
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    borderWidth: 1,
-                    fill: false
-                }]
+                datasets: [
+                        {
+                            label: 'Sensor 1 Readings', // First sensor
+                            data: [], // Sensor 1 data
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            borderWidth: 1,
+                            fill: false
+                        },
+                        {
+                            label: 'Sensor 2 Readings', // Second sensor
+                            data: [], // Sensor 2 data
+                            borderColor: 'rgba(192, 75, 75, 1)',
+                            borderWidth: 1,
+                            fill: false
+                        }
+                    ]
             },
             options: {
+                responsive: true,
+                maintainAspectRatio: false,
                 scales: {
                     x: {
                         type: 'time',
                         time: {
-                            unit: 'minute'
+                            //unit: 'second',
+                            //format MM:SS
+                            displayFormats: {
+                                second: 'mm:ss'
+                            },
+                           /* parser: function(value) {
+                                    const date = new Date(value);
+                                    if (isNaN(date.getTime())) {
+                                        console.error("Invalid time value:", value);
+                                        return null;
+                                    }
+                                    return date.toISOString();
+                                }*/
                         }
                     },
                     y: {
-                        beginAtZero: true
+                        //beginAtZero: true
+                        //multiples of 2, 5 or 10 only
+                        ticks: {
+                            stepSize: 1
+                        }
                     }
                 }
             }
         });
     
-    // Function to update the chart with new data
-    function updateChart(timestamp, temperature) {
-    temperatureChart.data.labels.push(timestamp);
-    temperatureChart.data.datasets[0].data.push(temperature);
-    temperatureChart.update();
+// function to tell how many sensors are attached
+    function getNumberOfSensors() {
+        return numberOfSensors;
     }
 
-    // DOM Elements
-    const connectButton = document.getElementById('connectBleButton');
-    const disconnectButton = document.getElementById('disconnectBleButton');
-    const retrievedValue = document.getElementById('valueContainer');
-    const timestampContainer = document.getElementById('timestamp');
-    const timeValueContainer = document.getElementById('timeValueContainer');
-    const resetTimeButton = document.getElementById('resetTimeButton');
-    const timeValueSent = document.getElementById('timeValueSent');
-    const bleStateContainer = document.getElementById('bleState');
+    // Function to update the chart with new data
+    function updateChart(timestamp, Data1, Data2) {
+    timeChart.data.labels.push(timestamp);
+    timeChart.data.datasets[0].data.push({x: timestamp, y: Data1});
+    timeChart.data.datasets[1].data.push({x: timestamp, y: Data2});
+    timeChart.update();
+    }
+
+    //------------------ displaying current values ------------------
+
+
+
+    //------------------downloading the data as csv------------------
+
+    function downloadCsv() {
+            const labels = timeChart.data.labels;
+            const data = timeChart.data.datasets[0].data;
+
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Time,Value\n"; // Add headers
+
+            data.forEach((point, index) => {
+                const timestamp = labels[index];
+                const value = point.y;
+                csvContent += `${timestamp},${value}\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "data.csv");
+            document.body.appendChild(link); // Required for FF
+
+            link.click();
+            document.body.removeChild(link);
+        }
+
+
+    //------------------ bluetooth setup ------------------
 
     //Define BLE Device Specs
-    const deviceName = 'TempLogger';
+    const deviceName = 'Datalogger';
     const bleService = '1e85414a-a5f0-4976-92a1-bce08f690857';
-    const TempCharacteristic = '7a5a3d88-e7d4-49f6-a6ac-2f1579c93c80';
+    const SensorCharacteristic = '7a5a3d88-e7d4-49f6-a6ac-2f1579c93c80';
     const TimeCharacteristic = '22671dbe-1ce2-4f41-959a-8ccb81fdd7f7';
+    const ControlCharacteristic = '25a8bcb3-a049-4d90-9a74-7a51767265f8';
+    const MetaDataCharacteristic = '96c1083c-dcca-4758-85d4-56f4b43092b4';
 
     //Global Variables to Handle Bluetooth
-    var bleServer;
-    var bleServiceFound;
-    var sensorCharacteristicFound;
+    var bleServer = null;
+    var bleServiceFound = null;
+    var sensorCharacteristicFound = null;
 
     // Connect Button (search for BLE Devices only if BLE is available)
     connectButton.addEventListener('click', (event) => {
         if (isWebBluetoothEnabled()){
-            connectToDevice();
+            if(BLEconnectionState === false){
+                connectToDevice();
+            } else {
+                disconnectDevice();
+            }
         }
     });
 
-    // Disconnect Button
-    disconnectButton.addEventListener('click', disconnectDevice);
-
-    // Write to the ESP32 Time Characteristic
-    resetTimeButton.addEventListener('click', () => writeOnCharacteristic(0));
+   
 
     // Check if BLE is available in your Browser
     function isWebBluetoothEnabled() {
         if (!navigator.bluetooth) {
             console.log('Web Bluetooth API is not available in this browser!');
-            bleStateContainer.innerHTML = "Web Bluetooth API is not available in this browser/device!";
+            //bleStateContainer.innerHTML = "Web Bluetooth API is not available in this browser/device!";
             return false
         }
         console.log('Web Bluetooth API supported in this browser.');
         return true
     }
+
+    //------------------ functions for incoming data ------------------
 
     // Connect to BLE Device and Enable Notifications
     function connectToDevice() {
@@ -153,8 +245,11 @@
         })
         .then(device => {
             console.log('Device Selected:', device.name);
-            bleStateContainer.innerHTML = 'Connected to device ' + device.name;
-            bleStateContainer.style.color = "#24af37";
+            //bleStateContainer.innerHTML = 'Connected to device ' + device.name;
+            //bleStateContainer.style.color = "#24af37";
+            BLEconnectionState = true;
+            connectButton.innerHTML = "Disconnect";
+            connectButton.style.backgroundColor = "#f33224";
             device.addEventListener('gattservicedisconnected', onDisconnected);
             return device.gatt.connect();
         })
@@ -163,116 +258,170 @@
             console.log("Connected to GATT Server");
             return bleServer.getPrimaryService(bleService);
         })
+        //Start listening for metadata
         .then(service => {
             bleServiceFound = service;
             console.log("Service discovered:", service.uuid);
-            return service.getCharacteristic(TempCharacteristic);
+            return service.getCharacteristic(MetaDataCharacteristic);
         })
         .then(characteristic => {
-            console.log("Temperature Characteristic discovered:", characteristic.uuid);
-            sensorCharacteristicFound = characteristic;
-            characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicChange);
+            console.log("Metadata Characteristic discovered:", characteristic.uuid);
+            characteristic.addEventListener('characteristicvaluechanged', handleMetaDataCharacteristicChange);
             characteristic.startNotifications();
-            console.log("Temperature Notifications Started.");
+            console.log("Metadata Notifications Started.");
             return characteristic.readValue();
         })
-        .then(value => {
-            console.log("Read temperature value: ", value);
-            const decodedValue = new TextDecoder().decode(value);
-            console.log("Decoded temperature value: ", decodedValue);
-            
-            // Assuming the incoming value is a comma-separated string of two temperatures
-            const temperatures = decodedValue.split(',');
-            if (temperatures.length === 2) {
-            const temp1 = temperatures[0];
-            const temp2 = temperatures[1];
-            
-            // Update the respective containers
-            document.getElementById('valueContainer1').innerHTML = temp1;
-            document.getElementById('valueContainer2').innerHTML = temp2;
-            
-            // Update the timestamps
-            document.getElementById('timestamp1').innerHTML = getDateTime();
-            document.getElementById('timestamp2').innerHTML = getDateTime();
+        //then read and parse the metadata characteristic in case it doesn't change later
+         /*.then(characteristic => {
+            const newMetaDataReceived = new TextDecoder().decode(characteristic.value);
+            console.log("Metadata characteristic value changed: ", newMetaDataReceived);
+
+            const metaData = newMetaDataReceived.split(',');
+            Quantity = metaData[0];
+            Unit = metaData[1];
+            numberOfSensors = parseInt (metaData[2]);
+            timeInterval = parseInt (metaData[3]);
+            console.log("Quantity: ", Quantity);
+            console.log("Unit: ", Unit);
+            console.log("Number of Sensors: ", numberOfSensors);
+            console.log("Time Interval: ", timeInterval);
+
+            //decide on a suitable time interval for the graph
+            if (timeInterval < 30000){
+                timeChart.options.scales.x.time.unit = 'second';
+            } else if (timeInterval < 1800000){
+                timeChart.options.scales.x.time.unit = 'minute';
             } else {
-            console.error("Unexpected temperature format: ", decodedValue);
+                timeChart.options.scales.x.time.unit = 'hour';
             }
+        })
+            */
+        //start listening for sensor data and get the initial values
+        .then(service => {
+            //bleServiceFound = service;
+            //console.log("Service discovered:", service.uuid);
+            return bleServiceFound.getCharacteristic(SensorCharacteristic);
+        })
+        .then(characteristic => {
+            console.log("Sensor Characteristic discovered:", characteristic.uuid);
+            sensorCharacteristicFound = characteristic;
+            characteristic.addEventListener('characteristicvaluechanged', handleSensorCharacteristicChange);
+            characteristic.startNotifications();
+            console.log("Sensor Notifications Started.");
+            return characteristic.readValue();
+        })
+               
+        //start listening for time data 
+        .then(service => {
+            //bleServiceFound = service;
+            //console.log("Service discovered:", service.uuid);
             return bleServiceFound.getCharacteristic(TimeCharacteristic);
         })
-        
-        
-        .then(timeCharacteristic => {
+        .then(TimeCharacteristic => {
             // Now get the TimeCharacteristic
-            //return bleServiceFound.getCharacteristic(TimeCharacteristic);
-            console.log("Time Characteristic discovered:", timeCharacteristic.uuid);
-            timeCharacteristic.addEventListener('characteristicvaluechanged', handleTimeCharacteristicChange);
-            timeCharacteristic.startNotifications();
+            console.log("Time Characteristic discovered:", TimeCharacteristic.uuid);
+            TimeCharacteristic.addEventListener('characteristicvaluechanged', handleTimeCharacteristicChange);
+            TimeCharacteristic.startNotifications();
             console.log("Time Notifications Started.");
-            return timeCharacteristic.readValue();
-        })
-        .then(timeValue => {
-            console.log("Read time value: ", timeValue);
-            const decodedTimeValue = new TextDecoder().decode(timeValue);
-            console.log("Decoded time value: ", decodedTimeValue);
-            timeValueContainer.innerHTML = decodedTimeValue;
+            return TimeCharacteristic.readValue();
         })
         .catch(error => {
             console.log('Error: ', error);
         });
     }
     
-    function handleTimeCharacteristicChange(event) {
-        const newTimeValueReceived = new TextDecoder().decode(event.target.value);
-        console.log("Time characteristic value changed: ", newTimeValueReceived);
-        timeValueContainer.innerHTML = newTimeValueReceived;
-    }
+     //Function to handle incoming metadata
+     function handleMetaDataCharacteristicChange(event) {
+        const newMetaDataReceived = new TextDecoder().decode(event.target.value);
+        console.log("Metadata characteristic value changed: ", newMetaDataReceived);
 
-    function onDisconnected(event){
-        console.log('Device Disconnected:', event.target.device.name);
-        bleStateContainer.innerHTML = "Device disconnected";
-        bleStateContainer.style.color = "#d13a30";
+        const metaData = newMetaDataReceived.split(',');
+        Quantity = metaData[0];
+        Unit = metaData[1];
+        numberOfSensors = parseInt (metaData[2]);
+        timeInterval = parseInt (metaData[3]);
+        console.log("Quantity: ", Quantity);
+        console.log("Unit: ", Unit);
+        console.log("Number of Sensors: ", numberOfSensors);
+        console.log("Time Interval: ", timeInterval);
 
-        connectToDevice();
-    }
-
-    function handleCharacteristicChange(event){
-        const newValueReceived = new TextDecoder().decode(event.target.value);
-        console.log("Characteristic value changed: ", newValueReceived);
-
-        // Assuming the incoming value is a comma-separated string of two temperatures
-        const temperatures = newValueReceived.split(',');
-        if (temperatures.length === 2) {
-            const temp1 = temperatures[0];
-            const temp2 = temperatures[1];
-
-            // Update the respective containers
-            //document.getElementById('valueContainer1').innerHTML = temp1;
-            //document.getElementById('valueContainer2').innerHTML = temp2;
-
-            // Update the timestamps
-            //document.getElementById('timestamp1').innerHTML = getDateTime();
-            //document.getElementById('timestamp2').innerHTML = getDateTime();
-            updateChart(getDateTime(), temp1);
+        //decide on a suitable time interval for the graph
+        if (timeInterval < 30000){
+            timeChart.options.scales.x.time.unit = 'second';
+        } else if (timeInterval < 1800000){
+            timeChart.options.scales.x.time.unit = 'minute';
         } else {
-            console.error("Unexpected temperature format: ", newValueReceived);
+            timeChart.options.scales.x.time.unit = 'hour';
         }
     }
 
-    // Write to the ESP32 Time Characteristic
+    //Function to handle incoming time data
+    function handleTimeCharacteristicChange(event) {
+        const newTimeValueReceived = new TextDecoder().decode(event.target.value);
+        console.log("Time characteristic value changed: ", newTimeValueReceived);
+
+        const timeData = newTimeValueReceived.split(',');
+        running = timeData[0]; //boolean
+        //update the play/pause button
+        if (running === "1") {
+            playPauseButton.innerHTML = "Pause";
+        } else {
+            playPauseButton.innerHTML = "Play";
+        }
+        time = parseInt(timeData[1]); //millis
+        
+        timestamp = new Date(time);
+            if (isNaN(timestamp.getTime())) {
+                console.error("Invalid time value:", newTimeValueReceived);
+                return;
+            }
+
+        let time2 = time;
+
+        hours = Math.floor(time2 / 3600000);
+        time2 = time2 % 3600000;
+        minutes = Math.floor(time2 / 60000);
+        time2 = time2 % 60000;
+        seconds = Math.floor(time2 / 1000);
+        
+        // Update the respective containers
+        //timeValueContainer.innerHTML = newTimeValueReceived;
+
+        //convert time to a readable format for the graph 
+
+    }
+
+
+    function handleSensorCharacteristicChange(event){
+        const newValueReceived = new TextDecoder().decode(event.target.value);
+        console.log("Sensor Characteristic value changed: ", newValueReceived);
+
+        // Assuming the incoming value is a comma-separated string
+        const SensorReadings = newValueReceived.split(',');
+        for (let i = 0; i < numberOfSensors; i++) {
+            sensorData[i] = parseFloat(SensorReadings[i]);
+        }
+            // Update the graph
+            updateChart(timestamp, sensorData[0], sensorData[1]);
+        
+    }
+
+    //----------------- Buttons and control-----------------
+
+    // Write to the ESP32 Control Characteristic
     function writeOnCharacteristic(value) {
         if (bleServer && bleServer.connected) {
-            bleServiceFound.getCharacteristic(TimeCharacteristic)
+            bleServiceFound.getCharacteristic(ControlCharacteristic)
             .then(characteristic => {
-                console.log("Found the Time characteristic: ", characteristic.uuid);
+                console.log("Found the Control characteristic: ", characteristic.uuid);
                 const data = new Uint8Array([value]);
-                return characteristic.writeValue(data);
+                return characteristic.writeValue(data); //previously data
             })
             .then(() => {
-                timeValueSent.innerHTML = value;
-                console.log("Value written to Time characteristic:", value);
+                console.log("Value written to Control characteristic:", value);
             })
             .catch(error => {
-                console.error("Error writing to the Time characteristic: ", error);
+                console.error("Error writing to the Control characteristic: ", error);
             });
         } else {
             console.error("Bluetooth is not connected. Cannot write to characteristic.");
@@ -281,8 +430,59 @@
     }
     
      // Reset Button Event Listener
-        resetTimeButton.addEventListener('click', () => writeOnCharacteristic(0));
+        resetButton.addEventListener('click', () => writeOnCharacteristic("0"));
+        // Function to reset the graph
+        function resetGraph() {
+            timeChart.data.labels = [];
+            timeChart.data.datasets[0].data = [];
+            timeChart.update();
+        }
+
+        // Reset Graph Button Event Listener
+        resetButton.addEventListener('click', () => {
+            writeOnCharacteristic("0");
+            playPauseButton.innerHTML = "Play";
+            resetGraph();
+        });
+        
     
+        // Play/Pause Button Event Listener
+        //if paused, play and send 1. If playing, pause and send 2.
+        playPauseButton.addEventListener('click', () => {
+            if (running === "0") {
+                writeOnCharacteristic("1"); //triggers playpause function in ESP32
+                running = "1";
+                playPauseButton.innerHTML = "Pause";
+                playPauseButton.style.backgroundColor = "#d13a30";
+            } else {
+                writeOnCharacteristic("1");
+                running = "0";
+                playPauseButton.innerHTML = "Play";
+                playPauseButton.style.backgroundColor = "#3c9f15";
+            }
+        });
+    
+        //----------------- Connection and Disconnection Functions -----------------
+
+    let retryCount = 0;
+    const maxRetries = 5;
+    const retryDelay = 5000; // 5 seconds
+
+    function onDisconnected(event){
+        console.log('Device Disconnected:', event.target.device.name);
+        BLEconnectionState = false;
+        connectButton.innerHTML = "Connect";
+        connectButton.style.backgroundColor = "#3c9f15";
+
+
+        if (retryCount < maxRetries) {
+            retryCount++;
+            console.log(`Retrying connection in ${retryDelay / 1000} seconds... (Attempt ${retryCount}/${maxRetries})`);
+            setTimeout(connectToDevice, retryDelay);
+        } else {
+            console.log('Max retry attempts reached. Please try reconnecting manually.');
+        }
+    }
 
     function disconnectDevice() {
         console.log("Disconnect Device.");
@@ -292,11 +492,14 @@
                     .then(() => {
                         console.log("Notifications Stopped");
                         return bleServer.disconnect();
-                    })
+                    })  
                     .then(() => {
                         console.log("Device Disconnected");
-                        bleStateContainer.innerHTML = "Device Disconnected";
-                        bleStateContainer.style.color = "#d13a30";
+                        //bleStateContainer.innerHTML = "Device Disconnected";
+                        //bleStateContainer.style.color = "#d13a30";
+                        BLEconnectionState = false;
+                        connectButton.innerHTML = "Connect";
+                        connectButton.style.backgroundColor = "#3c9f15";
 
                     })
                     .catch(error => {
@@ -312,20 +515,6 @@
         }
     }
 
-    function getDateTime() {
-        var currentdate = new Date();
-        var day = ("00" + currentdate.getDate()).slice(-2); // Convert day to string and slice
-        var month = ("00" + (currentdate.getMonth() + 1)).slice(-2);
-        var year = currentdate.getFullYear();
-        var hours = ("00" + currentdate.getHours()).slice(-2);
-        var minutes = ("00" + currentdate.getMinutes()).slice(-2);
-        var seconds = ("00" + currentdate.getSeconds()).slice(-2);
-
-        var datetime = day + "/" + month + "/" + year + " at " + hours + ":" + minutes + ":" + seconds;
-        return datetime;
-    }
-
-    
 </script>
 
 </html>
