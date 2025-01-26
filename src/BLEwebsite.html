@@ -24,12 +24,11 @@
     <div class="content">
         <div class="card-grid" style="display: grid; grid-template-columns: 1fr 4fr; gap: 10px;">
             <div class="card">
-                <h2>Sensor Data</h2>
-                <p class="reading"><span id="sensorDataContainer">NaN</span></p>
+                <div id="sensorCardsContainer"></div>
                 <p class="gray-label">Last reading: <span id="sensorTimestamp"></span></p>
             </div>
             <div class="chart-container">
-                <h2>Time Graph</h2>
+                <h2 id="Graph header">Time Graph</h2>
                 <canvas id="timeChart"></canvas>
             </div>
         </div>
@@ -120,7 +119,9 @@
                     ]
             },
             options: {
+                showLine: true,
                 responsive: true,
+                animation: {duration: 0},
                 maintainAspectRatio: false,
                 scales: {
                     x: {
@@ -142,7 +143,7 @@
                         }
                     },
                     y: {
-                        //beginAtZero: true
+                        beginAtZero: true,
                         //multiples of 2, 5 or 10 only
                         ticks: {
                             stepSize: 1
@@ -158,11 +159,14 @@
     }
 
     // Function to update the chart with new data
-    function updateChart(timestamp, Data1, Data2) {
-    timeChart.data.labels.push(timestamp);
-    timeChart.data.datasets[0].data.push({x: timestamp, y: Data1});
-    timeChart.data.datasets[1].data.push({x: timestamp, y: Data2});
-    timeChart.update();
+    function updateChart(timestamp, sensorData) {
+        timeChart.data.labels.push(timestamp);
+        for (let i = 0; i < numberOfSensors; i++) {
+            if (timeChart.data.datasets[i]) {
+                timeChart.data.datasets[i].data.push({ x: timestamp, y: sensorData[i] });
+            }
+        }
+        timeChart.update();
     }
 
     //------------------ displaying current values ------------------
@@ -271,35 +275,8 @@
             console.log("Metadata Notifications Started.");
             return characteristic.readValue();
         })
-        //then read and parse the metadata characteristic in case it doesn't change later
-         /*.then(characteristic => {
-            const newMetaDataReceived = new TextDecoder().decode(characteristic.value);
-            console.log("Metadata characteristic value changed: ", newMetaDataReceived);
-
-            const metaData = newMetaDataReceived.split(',');
-            Quantity = metaData[0];
-            Unit = metaData[1];
-            numberOfSensors = parseInt (metaData[2]);
-            timeInterval = parseInt (metaData[3]);
-            console.log("Quantity: ", Quantity);
-            console.log("Unit: ", Unit);
-            console.log("Number of Sensors: ", numberOfSensors);
-            console.log("Time Interval: ", timeInterval);
-
-            //decide on a suitable time interval for the graph
-            if (timeInterval < 30000){
-                timeChart.options.scales.x.time.unit = 'second';
-            } else if (timeInterval < 1800000){
-                timeChart.options.scales.x.time.unit = 'minute';
-            } else {
-                timeChart.options.scales.x.time.unit = 'hour';
-            }
-        })
-            */
         //start listening for sensor data and get the initial values
         .then(service => {
-            //bleServiceFound = service;
-            //console.log("Service discovered:", service.uuid);
             return bleServiceFound.getCharacteristic(SensorCharacteristic);
         })
         .then(characteristic => {
@@ -313,8 +290,6 @@
                
         //start listening for time data 
         .then(service => {
-            //bleServiceFound = service;
-            //console.log("Service discovered:", service.uuid);
             return bleServiceFound.getCharacteristic(TimeCharacteristic);
         })
         .then(TimeCharacteristic => {
@@ -341,9 +316,15 @@
         numberOfSensors = parseInt (metaData[2]);
         timeInterval = parseInt (metaData[3]);
         console.log("Quantity: ", Quantity);
+            //change Graph header to reflect the quantity
+            document.getElementById('Graph header').innerHTML = `${Quantity} (${Unit})`;
         console.log("Unit: ", Unit);
         console.log("Number of Sensors: ", numberOfSensors);
         console.log("Time Interval: ", timeInterval);
+
+        // Update sensor cards
+        updateSensorCards();
+        updateChartDatasets();
 
         //decide on a suitable time interval for the graph
         if (timeInterval < 30000){
@@ -355,26 +336,71 @@
         }
     }
 
-    //Function to handle incoming time data
+    // Function to update the chart datasets based on the number of sensors
+    function updateChartDatasets() {
+        timeChart.data.datasets = []; // Clear existing datasets
+
+        for (let i = 0; i < numberOfSensors; i++) {
+            timeChart.data.datasets.push({
+                label: `Sensor ${i + 1}`,
+                data: [],
+                borderColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 1)`,
+                borderWidth: 1,
+                fill: false
+            });
+        }
+        timeChart.update();
+    }
+
+    // Function to update the sensor cards based on the number of sensors
+    function updateSensorCards() {
+        const sensorCardsContainer = document.getElementById('sensorCardsContainer');
+        sensorCardsContainer.innerHTML = ''; // Clear existing cards
+
+        for (let i = 0; i < numberOfSensors; i++) {
+            const card = document.createElement('div');
+            card.className = 'sensor-card';
+            card.innerHTML = `
+                <p class="reading"><span id="sensorValue${i}">NaN</span></p>
+
+            `;
+            sensorCardsContainer.appendChild(card);
+        }
+        //put the last time value in the sensorTimestamp variable
+        //sensorTimestamp.innerText = time;
+
+    }
+
+    // Function to handle incoming time data
     function handleTimeCharacteristicChange(event) {
         const newTimeValueReceived = new TextDecoder().decode(event.target.value);
         console.log("Time characteristic value changed: ", newTimeValueReceived);
 
         const timeData = newTimeValueReceived.split(',');
-        running = timeData[0]; //boolean
-        //update the play/pause button
-        if (running === "1") {
+        running = timeData[0]; // boolean
+
+        // If the value is not comma-separated, handle it as a single value
+        if (timeData.length === 1) {
+            running = newTimeValueReceived;
+        }
+
+        // Update the play/pause button
+        if (running == "1") {
             playPauseButton.innerHTML = "Pause";
         } else {
             playPauseButton.innerHTML = "Play";
         }
-        time = parseInt(timeData[1]); //millis
-        
-        timestamp = new Date(time);
-            if (isNaN(timestamp.getTime())) {
-                console.error("Invalid time value:", newTimeValueReceived);
-                return;
-            }
+    }
+
+
+     // Function to handle incoming sensor data
+     function handleSensorCharacteristicChange(event) {
+        const newValueReceived = new TextDecoder().decode(event.target.value);
+        console.log("Sensor Characteristic value changed: ", newValueReceived);
+
+        // Assuming the incoming value is a comma-separated string
+        const SensorReadings = newValueReceived.split(',');
+        time = parseInt(SensorReadings[0]);
 
         let time2 = time;
 
@@ -383,28 +409,25 @@
         minutes = Math.floor(time2 / 60000);
         time2 = time2 % 60000;
         seconds = Math.floor(time2 / 1000);
-        
-        // Update the respective containers
-        //timeValueContainer.innerHTML = newTimeValueReceived;
 
-        //convert time to a readable format for the graph 
-
-    }
-
-
-    function handleSensorCharacteristicChange(event){
-        const newValueReceived = new TextDecoder().decode(event.target.value);
-        console.log("Sensor Characteristic value changed: ", newValueReceived);
-
-        // Assuming the incoming value is a comma-separated string
-        const SensorReadings = newValueReceived.split(',');
-        for (let i = 0; i < numberOfSensors; i++) {
-            sensorData[i] = parseFloat(SensorReadings[i]);
+        timestamp = new Date(time);
+        if (isNaN(timestamp.getTime())) {
+            console.error("Invalid time value:", time);
+            return;
         }
-            // Update the graph
-            updateChart(timestamp, sensorData[0], sensorData[1]);
-        
+
+        for (let i = 0; i < numberOfSensors; i++) {
+            sensorData[i] = parseFloat(SensorReadings[i + 1]);
+            const sensorElement = document.getElementById(`sensorValue${i}`);
+            if (sensorElement) {
+                sensorElement.innerText = sensorData[i];
+            }
+        }
+
+        // Update the graph
+        updateChart(timestamp, sensorData);
     }
+
 
     //----------------- Buttons and control-----------------
 
@@ -429,33 +452,40 @@
         }
     }
     
-     // Reset Button Event Listener
-        resetButton.addEventListener('click', () => writeOnCharacteristic("0"));
+     
+        
         // Function to reset the graph
         function resetGraph() {
             timeChart.data.labels = [];
-            timeChart.data.datasets[0].data = [];
+            timeChart.data.datasets.forEach((dataset) => {
+                dataset.data = [];
+            });
+            
             timeChart.update();
+
         }
 
         // Reset Graph Button Event Listener
         resetButton.addEventListener('click', () => {
             writeOnCharacteristic("0");
             playPauseButton.innerHTML = "Play";
+            playPauseButton.style.backgroundColor = "#3c9f15";
             resetGraph();
+            //  clear the sensordata array
+            sensorData = [];
         });
         
     
         // Play/Pause Button Event Listener
         //if paused, play and send 1. If playing, pause and send 2.
         playPauseButton.addEventListener('click', () => {
-            if (running === "0") {
+            if (running === "0") {//currently paused
                 writeOnCharacteristic("1"); //triggers playpause function in ESP32
-                running = "1";
+                running = "1"; //start playing (chart only updates when sensor values come through). This variable keeps track of the state of the ESP32 experiment.
                 playPauseButton.innerHTML = "Pause";
                 playPauseButton.style.backgroundColor = "#d13a30";
             } else {
-                writeOnCharacteristic("1");
+                writeOnCharacteristic("1"); //triggers playpause function in ESP32
                 running = "0";
                 playPauseButton.innerHTML = "Play";
                 playPauseButton.style.backgroundColor = "#3c9f15";
@@ -514,7 +544,7 @@
             window.alert("Bluetooth is not connected.")
         }
     }
-
+   
 </script>
 
 </html>

@@ -16,7 +16,7 @@
 // BLE Server and Characteristics
 BLEServer *pServer = NULL;
 BLECharacteristic *pSensorCharacteristic = NULL;
-BLECharacteristic *pTimeCharacteristic = NULL;
+BLECharacteristic *pTimeCharacteristic = NULL; // should deprecate this and put time into the first element of the sensor characteristic array
 BLECharacteristic *pControlCharacteristic = NULL;
 BLECharacteristic *pMetadataCharacteristic = NULL;
 
@@ -168,17 +168,32 @@ void BLEUpdateMetadata(){
     pMetadataCharacteristic->notify();
 }
 
+
 //update the BLE characteristics
 void BLEUpdateSensorData(){
-    //sensor string  sensor1,sensor2,sensor3,sensor4,sensor5
+    activity();
+    //sensor string  millis elapsed (1h = 4B),(1B)sensor1 (4 bytes float),sensor2,sensor3, sensor4,sensor5 = 29 bytes
+    //max packet length is 31 bytes
     String x = "";
-    for(int i = 0; i < SENSOR::numberOfDevices; i++){
-        x += String(SENSOR::sensorReadings[i]) + ",";
-    }
-    pSensorCharacteristic->setValue((String(x)).c_str());
-
-    //time string
+    String m = ""; //millis since the start of the experiment
+    m = String(experimentTimeElapsed);
+    x = m + ","; //add the time to the start of the string
     
+   
+    for(int i = 0; i < SENSOR::numberOfDevices; i++){
+         x += String(SENSOR::sensorReadings[i]*SENSOR::conversionFactor) + ",";
+         Serial.println(x);
+    }
+
+    pSensorCharacteristic->setValue((String(x)).c_str());
+    if(deviceConnected) {
+        pSensorCharacteristic->notify();
+    }
+}
+void toggleRunning(){
+    //time string
+    String m = String(experimentTimeElapsed);
+
     String r = ""; 
     if(running){
         r = "1";
@@ -186,12 +201,31 @@ void BLEUpdateSensorData(){
     else{
         r = "0";
     }
-    String m = ""; //millis since the start of the experiment
-    m = String(experimentTimeElapsed);
-
+    
     String t = "";
     t = String(hours) + ":" + String(minutes < 10 ? "0" : "") + String(minutes) + ":" + String(seconds < 10 ? "0" : "") + String(seconds) ;
 
     pTimeCharacteristic->setValue((String(r) + "," + String(m) + "," + String(t)).c_str());
-    BLENotifyAll();
+    if(deviceConnected) {
+        pTimeCharacteristic->notify();
+    }
+}
+
+//send the burst data over BLE
+void BLESendBurstData(){
+    //send the burst data over BLE
+    for(int i = 0; i < maxBurst; i++){
+        String x = "";
+        int t = i*burstInterval;
+        x = String(t) + ",";
+        for(int j = 0; j < SENSOR::numberOfDevices; j++){
+        x += String(burstData[i][j]) + ",";
+        }
+        pSensorCharacteristic->setValue((String(x)).c_str());
+        
+    if(deviceConnected) {
+        pSensorCharacteristic->notify();
+    }    
+    delay(1); //delay to allow the BLE stack to send the data
+    }
 }

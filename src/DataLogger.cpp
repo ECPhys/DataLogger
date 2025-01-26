@@ -29,21 +29,24 @@ void loop() {
     BLEConnections(); // Handle BLE connections
 
     //Handle button presses
-    GLOBALS::startStopButton();
-    //Handle control commands over BLE
+    startStopButton();
+    blankScreen();
+    //Handle control commands over BLE - this is handled directly in BlEHelper.h
+
 
     //This is the frequency of updating the sensor data
     timeKeeper(sensorLastUpdateTime, sensorInterval, SENSOR::sensorRead);
 
-    //This is the frequency of reporting the sensor data and updating the time
-    timeKeeper(lastExperimentUpdateTime, ExperimentInterval, experimentTimer);
-
+    //This is the frequency of reporting the sensor data and updating the time and the display
+    timeKeeper(lastExperimentUpdateTime, burstMode ? burstReportInterval : ExperimentInterval, experimentTimer);
+    
     //Handle display updates happens in the experimentTimer function
     // Update BLE Characteristics happens in the experimentTimer function
     
 
     //Handle power management
-    GLOBALS::batteryCheck();
+    batteryCheck();
+    autoPowerSave();
     
     //Handle changes in connected sensors
 
