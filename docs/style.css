@@ -14,6 +14,8 @@ h1 {
     color: white;
     margin: 0;
     padding: 14px 16px;
+    flex-grow: 1; /* Allow the title to take up available space */
+    text-align: left; /* Align the title to the left */
 }
 h2{
     font-size: 1.4rem;
@@ -34,6 +36,12 @@ h2{
     padding: 0 20px;
     box-sizing: border-box;
 }
+
+.topnav .logo {
+    height: 40px; /* Adjust the height of the logo */
+    margin-right: 10px; /* Add some spacing between the logo and the title */
+}
+
 .controls {
     display: flex;
     gap: 10px;

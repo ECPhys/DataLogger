@@ -4,7 +4,7 @@
 //Semi-constant variables for the time
 unsigned long sensorInterval = 1000; //millis
 unsigned long ExperimentInterval = 1000; //millis
-unsigned long displayInterval = 1000; //millis
+unsigned long displayInterval = 100; //millis
 
 //Time variables for the sensor which may not update every time the experiment time is updated
 unsigned long sensorLastUpdateTime = 0; //millis
@@ -34,17 +34,23 @@ bool paused = false;
 bool burstMode = false;
 int maxBurst = 1000; //number of readings to take in burst mode
 int burstCount = 0;
-int burstInterval = 5; //millis
-unsigned long burstReportInterval = 500; //millis
+int burstInterval = 3; //millis
+unsigned long burstReportInterval = 500; //millis 
 float burstData[1000][5]; //1000 readings of 5 sensors
 
 //forward declaration of the display update function and BLE sensor update function
 void DisplayUpdate();
+extern BLECharacteristic* pSensorCharacteristic;
 void BLEUpdateSensorData();
 void BLEUpdateMetadata();
 void toggleRunning();
 void BLESendBurstData();
 void activity();
+void recordingMessage();
+void message();
+void callibrationRoutine();
+bool loud = false;
+bool displayFree = true; //display is free to update
 namespace SENSOR{
     void callibrateAcc();
 }
@@ -84,7 +90,7 @@ void experimentTimer(){
             experimentPauseTime = 0;
         }
     }
-    DisplayUpdate();
+    //DisplayUpdate();
     
 }
 
@@ -100,20 +106,19 @@ void playPause(){
         if(burstMode){
             BLESendBurstData();
         }
-        M5.Speaker.tone(1000, 400);
+        if(loud){M5.Speaker.tone(1000, 400);}
     }
     else{ //play
-        if(!paused){
-           if(burstMode){
+        if(burstMode){
             //display a message to the screen
-                SENSOR::callibrateAcc();   
-                M5.Lcd.setCursor(10, 23);
-                M5.Lcd.setTextColor(TFT_YELLOW);
-                M5.Lcd.setTextSize(4); 
-                M5.Lcd.print("START");
-                delay(500); 
-           }
-           
+                callibrationRoutine();   
+                //M5.Lcd.setCursor(10, 23);
+                //M5.Lcd.setTextColor(TFT_YELLOW);
+                //M5.Lcd.setTextSize(4); 
+                //M5.Lcd.print("START");
+                recordingMessage();                
+           }  
+        if(!paused){       
             //this starts the experiment from the beginning
             experimentStartTime = millis();
             experimentPauseTime = 0;
@@ -126,21 +131,26 @@ void playPause(){
         }
         paused = false;
         running = true; toggleRunning();
-        M5.Speaker.tone(2000, 300);
+        if(loud){M5.Speaker.tone(2000, 300);}
     }
+    //DisplayUpdate();
     //BLEUpdateMetadata();
 }
 
 //reset function
 void reset(){
-    running = false; toggleRunning();
+    if(running){toggleRunning();} //tells the website we are stopping
+    running = false; 
     paused = false;
     BLEUpdateMetadata();
     Serial.println("Timer reset to 0");
+    if(loud){
     M5.Speaker.tone(3000, 100);
     M5.Speaker.tone(2000, 100);
     M5.Speaker.tone(1000, 100);
+    }
     experimentTimeElapsed = 0;
-    DisplayUpdate();
+    pSensorCharacteristic->setValue("0");
+    //DisplayUpdate();
 }
 

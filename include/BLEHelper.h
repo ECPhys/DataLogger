@@ -135,6 +135,8 @@ void BLEInit(){
 void BLEConnections(){
     if (!deviceConnected && oldDeviceConnected) {
     Serial.println("Device disconnected.");
+    //reset the data
+    pSensorCharacteristic->setValue("0");
     delay(500); // give the bluetooth stack the chance to get things ready
     pServer->startAdvertising(); // restart advertising
     Serial.println("Start advertising");
@@ -160,7 +162,7 @@ void BLENotifyAll(){
 
 //update the experiment metadata to the website
 void BLEUpdateMetadata(){
-    //Quantity, Unit, number of devices, sensor interval
+    //[0] Quantity, [1] Unit, [2] number of devices, [3] sensor interval, [4] sensor 1 ID, [5] sensor 2 ID, [6] sensor 3 ID, [7] sensor 4 ID, [8] sensor 5 ID
     String x = "";
     x = String(SENSOR::sensorDetails[SENSOR::sensorID[0]][SENSOR::sensorID[1]][1]) + "," + String(SENSOR::sensorDetails[SENSOR::sensorID[0]][SENSOR::sensorID[1]][2]) + "," + String(SENSOR::numberOfDevices) + "," + String(sensorInterval);
 
@@ -205,27 +207,30 @@ void toggleRunning(){
     String t = "";
     t = String(hours) + ":" + String(minutes < 10 ? "0" : "") + String(minutes) + ":" + String(seconds < 10 ? "0" : "") + String(seconds) ;
 
-    pTimeCharacteristic->setValue((String(r) + "," + String(m) + "," + String(t)).c_str());
+    pTimeCharacteristic->setValue((String(r) + "," + String (m) + "," + String(t)).c_str());
     if(deviceConnected) {
         pTimeCharacteristic->notify();
     }
+    //DisplayUpdate();
 }
 
 //send the burst data over BLE
 void BLESendBurstData(){
+    DisplayUpdate();
     //send the burst data over BLE
+    Serial.println("Sending burst data");
     for(int i = 0; i < maxBurst; i++){
         String x = "";
         int t = i*burstInterval;
         x = String(t) + ",";
         for(int j = 0; j < SENSOR::numberOfDevices; j++){
-        x += String(burstData[i][j]) + ",";
+        x += String(burstData[i][j]*SENSOR::conversionFactor) + ",";
         }
         pSensorCharacteristic->setValue((String(x)).c_str());
         
     if(deviceConnected) {
         pSensorCharacteristic->notify();
     }    
-    delay(1); //delay to allow the BLE stack to send the data
+    delay(6); //delay to allow the BLE stack to send the data
     }
 }

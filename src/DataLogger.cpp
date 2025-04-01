@@ -12,13 +12,17 @@ void setup() {
     // Initialize the display
     DisplayInit();
 
-    // Initialize the temperature sensor
+    SENSOR::sensorID[1]=3; //we are choosing here which internal sensor to begin with
+
+    // Autodetect which sensors are attached
     SENSOR::sensorDetect();
     //Initialise the sensors
     SENSOR::sensorInit();
 
     // Initialize BLE
     BLEInit();
+
+    
 
 }
     
@@ -37,19 +41,20 @@ void loop() {
     //This is the frequency of updating the sensor data
     timeKeeper(sensorLastUpdateTime, sensorInterval, SENSOR::sensorRead);
 
-    //This is the frequency of reporting the sensor data and updating the time and the display
+    //This is the frequency of reporting the sensor data to BLE and updating the time for the display. burst stuff is redundant now
     timeKeeper(lastExperimentUpdateTime, burstMode ? burstReportInterval : ExperimentInterval, experimentTimer);
+
+    //This is the frequency of updating the display
+    timeKeeper(lastDisplayUpdateTime, displayInterval, DisplayUpdate);
     
-    //Handle display updates happens in the experimentTimer function
     // Update BLE Characteristics happens in the experimentTimer function
     
-
     //Handle power management
     batteryCheck();
     autoPowerSave();
     
     //Handle changes in connected sensors
-
+    menuUpdate();
     
    
 }

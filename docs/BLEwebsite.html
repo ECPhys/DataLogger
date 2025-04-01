@@ -9,9 +9,11 @@
     <meta charset="UTF-8">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
 </head>
 <body>
     <div class="topnav">
+        <img src="EC.png" alt="Logo" class="logo">
         <h1>DataLogger</h1>
         <div class="controls">
             <button id="connectBleButton" class="connectButton">Connect</button>        
@@ -67,19 +69,24 @@
     var hours = 0;
     var minutes = 0;
     var seconds = 0;
+    var useMillis = false;
     
-
     //graph variables
     var Quantity = "";
     var Unit = "";
     var numberOfSensors = 0;
     var dataPoint = 0;
+    //array of sensor labels
+    var sensorLabels = [];
     
     //sensor variables
     var sensorData = [];
     var BLEconnectionState = false;
 
-    
+    // Batch update variables
+    var batchData = [];
+    var batchUpdateInterval = 50; // Update chart every 1000ms (1 second)
+
     // DOM Elements
     const connectButton = document.getElementById('connectBleButton');
     const playPauseButton = document.getElementById('playPauseButton');
@@ -123,6 +130,38 @@
                 responsive: true,
                 animation: {duration: 0},
                 maintainAspectRatio: false,
+                plugins: {
+                    zoom: {
+                        pan: {
+                            enabled: true,
+                            mode: 'x',
+                        },
+                        zoom: {
+                            wheel: {
+                                enabled: true,
+                            },
+                            pinch: {
+                                enabled: true
+                            },
+                            mode: 'x',
+                        }
+                    }
+                },
+                //format the hover over to show the mm:ss:ms time
+                tooltips: {
+                    callbacks: {
+                        label: function(context) {
+                            var label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += context.parsed.y;
+                            }
+                            return label;
+                        }
+                    }
+                },
                 scales: {
                     x: {
                         type: 'time',
@@ -132,15 +171,22 @@
                             displayFormats: {
                                 second: 'mm:ss'
                             },
-                           /* parser: function(value) {
-                                    const date = new Date(value);
-                                    if (isNaN(date.getTime())) {
-                                        console.error("Invalid time value:", value);
-                                        return null;
-                                    }
-                                    return date.toISOString();
-                                }*/
+                        },
+                        ticks: {
+                            callback: function(value, index, values) {
+                                if (useMillis) {
+                                    return value; // Show raw millisecond values
+                                } else {
+                                    return new Date(value).toLocaleTimeString(); // Format as time
+                                }
+                            }
+                        },
+                        //show a time label for the unit of the x axis
+                        title: {
+                            display: true,
+                            text: 'Time'
                         }
+                        
                     },
                     y: {
                         beginAtZero: true,
@@ -149,7 +195,8 @@
                             stepSize: 1
                         }
                     }
-                }
+                },
+                
             }
         });
     
@@ -160,18 +207,57 @@
 
     // Function to update the chart with new data
     function updateChart(timestamp, sensorData) {
-        timeChart.data.labels.push(timestamp);
-        for (let i = 0; i < numberOfSensors; i++) {
-            if (timeChart.data.datasets[i]) {
-                timeChart.data.datasets[i].data.push({ x: timestamp, y: sensorData[i] });
+        const currentTime = Date.now();
+        if (currentTime - lastUpdateTime >= updateInterval) {
+            timeChart.data.labels.push(timestamp);
+            for (let i = 0; i < numberOfSensors; i++) {
+                if (timeChart.data.datasets[i]) {
+                    timeChart.data.datasets[i].data.push({ x: timestamp, y: sensorData[i] });
+                }
             }
+            timeChart.update();
+            lastUpdateTime = currentTime;
         }
-        timeChart.update();
     }
+
+    // Function to update the chart with batched data
+    function updateChartWithBatch() {
+        batchData.forEach(data => {
+            timeChart.data.labels.push(data.timestamp);
+            for (let i = 0; i < numberOfSensors; i++) {
+                if (timeChart.data.datasets[i]) {
+                    timeChart.data.datasets[i].data.push({ x: data.timestamp, y: data.sensorData[i] });
+                }
+            }
+        });
+        timeChart.update();
+        batchData = []; // Clear batch data after updating
+    }
+
+    // Set interval to update chart with batched data
+    setInterval(updateChartWithBatch, batchUpdateInterval);
 
     //------------------ displaying current values ------------------
 
+    // Function to update the sensor cards based on the number of sensors
+    function updateSensorCards() {
+        const sensorCardsContainer = document.getElementById('sensorCardsContainer');
+        sensorCardsContainer.innerHTML = ''; // Clear existing cards
 
+        for (let i = 0; i < numberOfSensors; i++) {
+            const card = document.createElement('div');
+            card.className = 'sensor-card';
+            card.innerHTML = `
+                <p class="reading"><span id="sensorValue${i}">NaN</span></p>
+                
+
+            `;
+            sensorCardsContainer.appendChild(card);
+        }
+        //put the last time value in the sensorTimestamp variable
+        //sensorTimestamp.innerText = time;
+
+    }
 
     //------------------downloading the data as csv------------------
 
@@ -311,7 +397,11 @@
         console.log("Metadata characteristic value changed: ", newMetaDataReceived);
 
         const metaData = newMetaDataReceived.split(',');
-        Quantity = metaData[0];
+        const labelData = metaData[0].split('/');
+        Quantity = labelData[0];
+        for(i = 1; i < labelData.length; i++){
+            sensorLabels[i-1] = labelData[i];
+        }
         Unit = metaData[1];
         numberOfSensors = parseInt (metaData[2]);
         timeInterval = parseInt (metaData[3]);
@@ -327,49 +417,53 @@
         updateChartDatasets();
 
         //decide on a suitable time interval for the graph
-        if (timeInterval < 30000){
+        if(timeInterval < 1000){ //burst mode
+            timeChart.options.scales.x.type = 'linear';
+            useMillis = true;
+            timeChart.options.scales.x.title.text = 'Time (ms)';
+        } else if (timeInterval < 30000){
+            timeChart.options.scales.x.type = 'time';
             timeChart.options.scales.x.time.unit = 'second';
+            timeChart.options.scales.x.time.displayFormats = {
+                second: 'mm:ss'
+            };
+            timeChart.options.scales.x.title.text = 'Time (seconds)';
         } else if (timeInterval < 1800000){
+            timeChart.options.scales.x.type = 'time';
             timeChart.options.scales.x.time.unit = 'minute';
+            timeChart.options.scales.x.title.text = 'Time (minutes)';
         } else {
+            timeChart.options.scales.x.type = 'time';
             timeChart.options.scales.x.time.unit = 'hour';
+            timeChart.options.scales.x.title.text = 'Time (hours)';
         }
+
+        timeChart.update();
     }
 
     // Function to update the chart datasets based on the number of sensors
+        
+
     function updateChartDatasets() {
         timeChart.data.datasets = []; // Clear existing datasets
-
-        for (let i = 0; i < numberOfSensors; i++) {
+               
+        if (numberOfSensors > 0) {
+            const labels = sensorLabels || [];
+            
+            for (let i = 0; i < numberOfSensors; i++) {
             timeChart.data.datasets.push({
-                label: `Sensor ${i + 1}`,
+                label: labels[i] || `Sensor ${i + 1}`,
                 data: [],
                 borderColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 1)`,
                 borderWidth: 1,
                 fill: false
             });
+            }
         }
         timeChart.update();
     }
 
-    // Function to update the sensor cards based on the number of sensors
-    function updateSensorCards() {
-        const sensorCardsContainer = document.getElementById('sensorCardsContainer');
-        sensorCardsContainer.innerHTML = ''; // Clear existing cards
-
-        for (let i = 0; i < numberOfSensors; i++) {
-            const card = document.createElement('div');
-            card.className = 'sensor-card';
-            card.innerHTML = `
-                <p class="reading"><span id="sensorValue${i}">NaN</span></p>
-
-            `;
-            sensorCardsContainer.appendChild(card);
-        }
-        //put the last time value in the sensorTimestamp variable
-        //sensorTimestamp.innerText = time;
-
-    }
+    
 
     // Function to handle incoming time data
     function handleTimeCharacteristicChange(event) {
@@ -424,8 +518,8 @@
             }
         }
 
-        // Update the graph
-        updateChart(timestamp, sensorData);
+        // Add data to batch
+        batchData.push({ timestamp: useMillis ? time : timestamp, sensorData: [...sensorData] });
     }
 
 
@@ -460,9 +554,8 @@
             timeChart.data.datasets.forEach((dataset) => {
                 dataset.data = [];
             });
-            
             timeChart.update();
-
+            timeChart.resetZoom(); // Reset the zoom level
         }
 
         // Reset Graph Button Event Listener
