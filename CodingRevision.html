@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Revision Flashcards</title>
+</head>
+<body>
+    <h1>Revision Flashcards</h1>
+    <div>
+        <p>Mode: <span id="mode">Keyword to Definitions</span></p>
+        <button onclick="switchMode()">Switch Mode</button>
+        <p>Keyword/Definition: <span id="keyword" style="font-weight: bold; color: blue;"></span></p>
+        <button onclick="getKeyword()">New Question</button>
+        <p>Options:</p>
+        <form id="definitionsForm">
+            <input type="radio" name="definition" id="def1" value="def1">
+            <label for="def1" id="labelDef1"></label><br>
+            <input type="radio" name="definition" id="def2" value="def2">
+            <label for="def2" id="labelDef2"></label><br>
+            <input type="radio" name="definition" id="def3" value="def3">
+            <label for="def3" id="labelDef3"></label><br>
+        </form>
+    </div>
+    
+    <button onclick="checkAnswer()">Check Answer</button>
+    <p id="feedback"></p>
+
+    <script>
+        var Data = {
+            keywords: {
+                "Binary Sequences": ["binary digit", "bit", "letters", "words", "numbers", "images", "sounds", "videos", "instructions", "programs"],
+                "Digital Images": ["bitmaps", "raster images", "vector graphics", "resolution", "colour depth", "pixels", "picture elements", "grid", "metadata"],
+                "Digital Sound": ["sound waves", "sampling", "sampling rate", "sample size", "quality", "file size", "amplitude", "waveforms", "pulse code modulation", "MIDI files"],
+                "Compression": ["lossy compression", "lossless compression", "JPEG", "PNG", "file size", "storage", "transmission", "processing"],
+                "CPU Performance": ["fetch-execute cycle", "ALU", "control unit", "cache", "registers", "clock speed", "cache size", "number of cores", "embedded systems"],
+                "Primary Storage": ["RAM", "volatile memory", "ROM", "non-volatile memory", "BIOS", "primary storage", "programs", "data"]
+            },
+            definitions: {
+                "binary digit": "A basic unit of information in computing and digital communications.",
+                "bit": "A contraction of 'binary digit', representing a 0 or 1 in binary code.",
+                "letters": "Characters that are part of an alphabet used in writing.",
+                "words": "A single distinct meaningful element of speech or writing.",
+                "numbers": "Mathematical objects used to count, measure, and label.",
+                "images": "Visual representations of objects, scenes, or concepts.",
+                "sounds": "Vibrations that travel through the air or another medium and can be heard.",
+                "videos": "Recordings of moving visual images.",
+                "instructions": "Directions or orders given to a computer to perform specific tasks.",
+                "programs": "Sets of instructions that a computer follows to perform a task.",
+                "bitmaps": "Images composed of pixels arranged in a grid.",
+                "raster images": "Images made up of a grid of individual pixels.",
+                "vector graphics": "Images created using paths or mathematical expressions.",
+                "resolution": "The detail an image holds, typically measured in pixels.",
+                "colour depth": "The number of bits used to represent the color of a single pixel.",
+                "pixels": "The smallest unit of a digital image or display.",
+                "picture elements": "Another term for pixels.",
+                "grid": "A network of lines that cross each other to form a series of squares or rectangles.",
+                "metadata": "Data that provides information about other data.",
+                "sound waves": "Waves of pressure that travel through air or another medium and can be heard.",
+                "sampling": "The process of converting an analog signal into a digital signal.",
+                "sampling rate": "The number of samples of audio carried per second.",
+                "sample size": "The number of bits used to represent each sample in digital audio.",
+                "quality": "The standard of something as measured against other things of a similar kind.",
+                "file size": "The amount of data in a file, typically measured in bytes.",
+                "amplitude": "The height of a wave's crest or depth of its trough.",
+                "waveforms": "Shapes and forms of signals moving through a medium.",
+                "pulse code modulation": "A method used to digitally represent analog signals.",
+                "MIDI files": "Files that contain musical data and instructions for digital instruments.",
+                "lossy compression": "A method of data compression that loses some data.",
+                "lossless compression": "A method of data compression that retains all original data.",
+                "JPEG": "A commonly used method of lossy compression for digital images.",
+                "PNG": "A raster-graphics file format that supports lossless data compression.",
+                "storage": "The retention of retrievable data on a computer or other electronic system.",
+                "transmission": "The act of transferring data from one place to another.",
+                "processing": "The act of performing operations on data.",
+                "fetch-execute cycle": "The basic operation cycle of a computer.",
+                "ALU": "The part of a computer that performs arithmetic and logical operations.",
+                "control unit": "The part of a computer that directs its operation.",
+                "cache": "A smaller, faster memory that stores copies of frequently accessed data.",
+                "registers": "Small, fast storage locations within a CPU.",
+                "clock speed": "The speed at which a processor executes instructions.",
+                "cache size": "The amount of memory available in the cache.",
+                "number of cores": "The number of independent processing units in a CPU.",
+                "embedded systems": "Special-purpose computer systems designed to perform dedicated functions.",
+                "RAM": "Volatile memory used for temporary storage while a computer is running.",
+                "volatile memory": "Memory that requires power to maintain stored information.",
+                "ROM": "Non-volatile memory used for permanent storage.",
+                "non-volatile memory": "Memory that retains data even when powered off.",
+                "BIOS": "Firmware used to perform hardware initialization during the booting process.",
+                "primary storage": "The main area in a computer where data is stored for quick access.",
+                "programs": "Sets of instructions that a computer follows to perform a task.",
+                "data": "Information processed or stored by a computer."
+            }
+        };
+
+        var correctDefinition;
+        var mode = "keywordToDefinitions"; // Initial mode
+
+        function switchMode() {
+            if (mode === "keywordToDefinitions") {
+                mode = "definitionToKeywords";
+                document.getElementById("mode").innerHTML = "Definition to Keywords";
+            } else {
+                mode = "keywordToDefinitions";
+                document.getElementById("mode").innerHTML = "Keyword to Definitions";
+            }
+            document.getElementById("feedback").innerHTML = "";
+            getKeyword();
+        }
+
+        function getKeyword() {
+            //clear the radio button
+            var radios = document.getElementsByName("definition");
+            for (var i = 0; i < radios.length; i++) {
+                radios[i].checked = false;
+            }
+            //clear the feedback message
+            document.getElementById("feedback").innerHTML = "";
+
+            var keys = Object.keys(Data.definitions);
+            if (mode === "keywordToDefinitions") {
+                //get a random keyword from the list
+                var randomKey = keys[Math.floor(Math.random() * keys.length)];
+                var keyword = randomKey;
+                //get the definition of the keyword
+                correctDefinition = Data.definitions[randomKey];
+                //get two other random definitions
+                var otherKeys = keys.filter(key => key !== randomKey);
+                var randomDef1 = Data.definitions[otherKeys[Math.floor(Math.random() * otherKeys.length)]];
+                var randomDef2 = Data.definitions[otherKeys[Math.floor(Math.random() * otherKeys.length)]];
+                //create an array of definitions and shuffle it
+                var definitions = [correctDefinition, randomDef1, randomDef2];
+                definitions = definitions.sort(() => Math.random() - 0.5);
+                //display the keyword and definitions
+                document.getElementById("keyword").innerHTML = keyword;
+                document.getElementById("labelDef1").innerHTML = definitions[0];
+                document.getElementById("labelDef2").innerHTML = definitions[1];
+                document.getElementById("labelDef3").innerHTML = definitions[2];
+            } else {
+                //get a random definition from the list
+                var randomKey = keys[Math.floor(Math.random() * keys.length)];
+                var definition = Data.definitions[randomKey];
+                correctDefinition = randomKey;
+                //get two other random keywords
+                var otherKeys = keys.filter(key => key !== randomKey);
+                var randomKey1 = otherKeys[Math.floor(Math.random() * otherKeys.length)];
+                var randomKey2 = otherKeys[Math.floor(Math.random() * otherKeys.length)];
+                //create an array of keywords and shuffle it
+                var keywords = [correctDefinition, randomKey1, randomKey2];
+                keywords = keywords.sort(() => Math.random() - 0.5);
+                //display the definition and keywords
+                document.getElementById("keyword").innerHTML = definition;
+                document.getElementById("labelDef1").innerHTML = keywords[0];
+                document.getElementById("labelDef2").innerHTML = keywords[1];
+                document.getElementById("labelDef3").innerHTML = keywords[2];
+            }
+        }
+
+        function checkAnswer() {
+            var selectedDef = document.querySelector('input[name="definition"]:checked');
+            if (selectedDef) {
+                var selectedLabel = document.getElementById("label" + selectedDef.id.charAt(0).toUpperCase() + selectedDef.id.slice(1)).innerHTML;
+                if (selectedLabel === correctDefinition) {
+                    document.getElementById("feedback").innerHTML = "Correct!";
+                    document.getElementById("feedback").style.color = "green";
+                } else {
+                    document.getElementById("feedback").innerHTML = "Incorrect - the correct answer is: " + correctDefinition;
+                    document.getElementById("feedback").style.color = "red";
+                }
+            } else {
+                document.getElementById("feedback").innerHTML = "Please select an answer.";
+            }
+        }
+    </script>
+</body>
+</html>
