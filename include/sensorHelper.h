@@ -1,10 +1,16 @@
 #pragma once
 
 
-// Declare OneWire object outside the switch statement
+//Initialise the onewire bus
 OneWire oneWire(33);
 //define one-wire sensor
 DallasTemperature sensors(&oneWire);
+
+//create two IC2 objects for the two I2C buses
+
+//TwoWire I2C1 = TwoWire(0);
+//TwoWire I2C2 = TwoWire(1);
+
 
 //forward declarations
 int burstCounter;
@@ -15,6 +21,38 @@ void buildMenuTree();
 //#include "MadgwickAHRS.h"
 //Madgwick filter;
 
+//NTC thermistor variables
+const float V_REF = 3.3; //reference voltage
+const float R1 = 14700.0; //resistor value
+const int ADC_RESOLUTION = 4095; //ADC resolution
+const float BETA = 3950.0; //beta value
+const float R0 = 10000.0; //resistor value at 25 degrees C
+const float T0 = 298.15; //temperature at 25 degrees C
+
+//TOF variable
+VL53L0X TOFsensor;
+
+//Ultrasonic variable
+SONIC_IO SONICsensor;
+int point      = 0;
+int last_point = 0;
+
+//Voltmeter variables
+#define M5_UNIT_VMETER_I2C_ADDR             0x49
+#define M5_UNIT_VMETER_EEPROM_I2C_ADDR      0x53
+#define M5_UNIT_VMETER_PRESSURE_COEFFICIENT 0.015918958F
+
+ADS1115 Vmeter;
+
+float Vresolution         = 0.0;
+float Vcalibration_factor = 0.0;
+
+//scales variables
+#define LOADCELL_DOUT_PIN 33
+#define LOADCELL_SCK_PIN  32
+
+HX711 scale;
+char info[100];
 
 namespace SENSOR{
 
@@ -28,24 +66,28 @@ namespace SENSOR{
     First element is the sensor ID
     Second element is the sensor
     
+    INTERNAL
     0,0 = microphone
     0,1 = accelerometer
     0,2 = net acceleration 
     0,3 = gyroscope
     0,4 = magnetometer
 
+    ONEWIRE
     1,0 = DS18B20
     1,1 = DS18S20
     1,2 = DS1822
     1,3 = DS18B20
     1,4 = DS18B20
 
+    I2C
     2,0 = BMP180
-    2,1 = BMP280
-    2,2 = BME280
-    2,3 = BMP180
+    2,1 = NCIR hat
+    2,2 = TOF hat
+    2,3 = Voltmeter
     2,4 = BMP180
 
+    ANALOG
     3,0 = NTC thermistor
     3,1 = voltmeter
     3,2 = ammeter
@@ -95,12 +137,12 @@ namespace SENSOR{
         {
             //BMP180
             {"BMP180","Pressure","Pa","1.0","1"},
-            //BMP280
-            {"BMP280","P","Pa","1.0","1"},
-            //BME280
-            {"BME280","P","Pa","1.0","1"},
-            //BMP180
-            {"BMP180","P","Pa","1.0","1"},
+            //NCIR hat
+            {"NCIR Hat","IR Temperature/T","deg C","1.0","1"},
+            //Time of Flight Hat
+            {"ToF Hat","Distance/D","m","1.0","1"},
+            //Voltmeter
+            {"Voltmeter","Voltage/V","V","1.0","1"},
             //BMP180
             {"BMP180","P","Pa","1.0","1"},
             //empty
@@ -110,16 +152,16 @@ namespace SENSOR{
         },
         //ID = 3, Analog sensors
         {
-            //NTC thermistor
-            {"NTC Thermistor","Temperature/T1/T2/T3/T4/T5","C","1.0","1"},
-            //voltmeter
+            //0: NTC thermistor
+            {"NTC Thermistor","Temperature/T","deg C","1.0","1"},
+            //1: voltmeter
             {"Voltmeter","Voltage","V","1.0","1"},
-            //ammeter
+            //2: ammeter
             {"Ammeter","Current","A","1.0","1"},
-            //other
-            {"Other","O","O","1.0","1"},
-            //other
-            {"Other","O","O","1.0","1"},
+            //3: Ultrasonic Distance
+            {"Ultrasonic Distance","Distance/D","m","1.0","1"},
+            //4: Scales
+            {"Scales","Mass/m","g","1.0","1"},
             //empty
             {"","","","","1"},
             //empty
@@ -162,13 +204,14 @@ namespace SENSOR{
         while(state != DONE){
             switch(state){
                 case CHECK_ONEWIRE:
-                    //Initialise the onewire bus and see if any sensors are connected.
-                    Serial.println("Checking for onewire devices");
-                    //begin with a 3v3 pullup on pin 32
+                    //Using pin 32 for power as using the 5V line caused the battery sensor to read random results (feeding 5V back into the 3.3V data line)
                     pinMode(32,OUTPUT);
                     digitalWrite(32,HIGH);
-                    //Initialise the onewire bus
-                    
+
+                   //Initialise the onewire bus and see if any sensors are connected.
+                    Serial.println("Checking for onewire devices");
+                   
+                    //start the one-wire bus
                     sensors.begin();
                     //count how many sensors are attached and report this
                     numberOfDevices = sensors.getDeviceCount();
@@ -182,49 +225,171 @@ namespace SENSOR{
                         }
                         else{
                             Serial.println("No onewire devices found");
+                            //power down the power pin
                             digitalWrite(32,LOW);
                             pinMode(32,INPUT);
-                            oneWire.reset();
-                            pinMode(33,INPUT);
+                            //disable the one-wire bus
+                            oneWire.write(0x00); //write a 0 to the bus to disable it
+                            //oneWire.reset();
+                            pinMode(33,INPUT); //is this needed?
                             state = CHECK_I2C;
                         }
                     break;
 
                 case CHECK_I2C:
+                    
                     //Initialise the I2C bus and see if any sensors are connected.
                     Serial.println("Checking for I2C devices");
+                    Serial.println("I2C1 bus");
+                    //check the first I2C bus (grove port)
+
+                    
                     Wire.begin(32,33);
                     Wire.beginTransmission(0x00);
+                    Wire.write(0x07); //write to the device once to see if it is there
                     if (Wire.endTransmission() == 0){
                         sensorID[0] = 2;
                         sensorID[1] = 0; //BMP180
                         numberOfDevices = atoi(sensorDetails[sensorID[0]][sensorID[1]][4]);
                         sensorConnected = true;
-                        Serial.println("I2C device found");
+                        Serial.println("BMP180 device found on bus 1");
                         state = DONE;
                     }
                     else{
-                        Serial.println("No I2C devices found");
-                        state = CHECK_ANALOG;
+                        Serial.println("BMP180 not found on bus 1");
+                        //Wire.end(); //end the previous I2C bus
+                        //check for voltmeter
+                        Wire.beginTransmission(M5_UNIT_VMETER_I2C_ADDR); //0x49
+                        if(Wire.endTransmission() == 0){ //voltmeter is there
+                            Serial.println("Voltmeter device found on bus 1. Initialising...");
+                            Wire.end(); //use the library's implemetation of the I2C bus
+                        
+                        Vmeter.begin(&Wire, M5_UNIT_VMETER_I2C_ADDR, 32, 33, 400000U); 
+                        Vmeter.setEEPROMAddr(M5_UNIT_VMETER_EEPROM_I2C_ADDR);
+                        Vmeter.setMode(ADS1115_MODE_SINGLESHOT);
+                        Vmeter.setRate(ADS1115_RATE_8);
+                        Vmeter.setGain(ADS1115_PGA_512);
+                        // | PGA      | Max Input Voltage(V) |
+                        // | PGA_6144 |        128           |
+                        // | PGA_4096 |        64            |
+                        // | PGA_2048 |        32            |
+                        // | PGA_512  |        16            | --< this is the default
+                        // | PGA_256  |        8             |
+
+                        Vresolution = Vmeter.getCoefficient() / M5_UNIT_VMETER_PRESSURE_COEFFICIENT;
+                        Vcalibration_factor = Vmeter.getFactoryCalibration();
+                        
+                            sensorID[0] = 2;
+                            sensorID[1] = 3; //voltmeter
+                            numberOfDevices = atoi(sensorDetails[sensorID[0]][sensorID[1]][4]);
+                            sensorConnected = true;
+                            Serial.println("Initialisation complete");
+                            state = DONE;
+                            
+                        }
+                        else{ 
+                            Serial.println("No I2C devices found on bus 1");
+                            Wire.end(); //end the previous I2C bus
+                            
+                            
+                            //check the 2nd I2C bus (Hats)
+                            Serial.println("I2C2 bus");
+                            Wire.begin(0,26);
+
+                            //NCIR Hat
+                            Wire.beginTransmission(0x5A);
+                            Wire.write(0x07); //write to the device once to see if it is there
+                            if (Wire.endTransmission() == 0){ // use Wire.requestFrom(0x5A, 2) and check this instead. 
+                                sensorID[0] = 2;
+                                sensorID[1] = 1; //NCIR Hat
+                                numberOfDevices += atoi(sensorDetails[sensorID[0]][sensorID[1]][4]); //add the number of devices to the total
+                                sensorConnected = true;
+                                Serial.println("I2C device found on bus 2");
+                                state = DONE;
+                            }
+                            else{
+                                // check for ToF Hat
+                                Wire.begin(0, 26);
+                                                        
+                                if(!TOFsensor.init()){
+                                Serial.println("Failed to detect and initialize sensor!");
+                                }
+                                TOFsensor.setTimeout(500);
+                                TOFsensor.startContinuous(20);
+                                //Wire.beginTransmission(0x29);
+                                //Wire.write(0x07); //write to the device once to see if it is there
+                                if (Wire.endTransmission() == 0){
+                                    sensorID[0] = 2;
+                                    sensorID[1] = 2; //NCIR Hat
+                                    numberOfDevices += atoi(sensorDetails[sensorID[0]][sensorID[1]][4]); //add the number of devices to the total
+                                    sensorConnected = true;
+                                    Serial.println("I2C device found on bus 2");
+                                    state = DONE;
+                                }
+                                else{ //last case of nested if statements
+                                    Serial.println("No I2C devices found on bus 2");
+                                    Wire.end(); //end the previous I2C bus
+                                    state = CHECK_ANALOG;
+                                } 
+                            }
+                        }
                     }
                     break;
 
                 case CHECK_ANALOG:
                     //Initialise the analog pin and see if any sensors are connected.
-                    Serial.println("Checking for analog devices");
-                    pinMode(36,INPUT);
-                    if (analogRead(36) > 1000){    //needs updating to the correct details as and when
+                    //check for Ultrasonic Range sensor
+                    Serial.println("Checking for Scales kit");
+                    SONICsensor.begin(32, 33);
+                    delay(500);//let the pin settle
+                    Serial.println(SONICsensor.getDistance());
+
+                    if(fabs(SONICsensor.getDistance() - 13.60) < 0.001){ //this checks for the scales very well! returns 13.60 when the scales are connected
+                       //cancel the ultrasonic sensor
+                       Serial.println("Scales kit found");
+                        pinMode(32,INPUT);
+                        pinMode(33,INPUT);
+
+                        // declare the scales
                         sensorID[0] = 3;
-                        sensorID[1] = 0; //NTC thermistor
+                        sensorID[1] = 4; //scales
                         numberOfDevices = atoi(sensorDetails[sensorID[0]][sensorID[1]][4]);
                         sensorConnected = true;
-                        Serial.println("Analog device found");
+                        state = DONE;
+                        
+                    }
+                    else if(SONICsensor.getDistance() > 0.1){ // 13.60 is what gets returned by the load cell when it is connected
+                        sensorID[0] = 3;
+                        sensorID[1] = 3; //ultrasonic
+                        numberOfDevices = atoi(sensorDetails[sensorID[0]][sensorID[1]][4]);
+                        sensorConnected = true;
+                        Serial.println("Ultrasonic device found");
                         state = DONE;
                     }
                     else{
-                        Serial.println("No analog devices found");
-                        state = INTERNAL;
+                        Serial.println("No ultrasonic devices found");
+                        pinMode(32,INPUT);
+                        pinMode(33,INPUT);
+
+                        //NTC temp probe check
+                        Serial.println("Checking for analog temperature probe");
+                        pinMode(33,INPUT);
+                        delay(500);//let the pin settle
+                        if (analogRead(33) > 500){    //needs updating to the correct details as and when
+                            sensorID[0] = 3;
+                            sensorID[1] = 0; //NTC thermistor
+                            numberOfDevices = atoi(sensorDetails[sensorID[0]][sensorID[1]][4]);
+                            sensorConnected = true;
+                            Serial.println("Analog Temp Probe found");
+                            state = DONE;
+                        }
+                        else{   
+                            //last case of nested if statements
+                            Serial.println("No analog devices found");
+                            state = INTERNAL;
+                        }
                     }
+                    
                     break;
 
                 case INTERNAL:
@@ -301,9 +466,76 @@ namespace SENSOR{
                 break;
             case 2:
                 //initialise the I2C device
+                if(sensorID[1] == 0) { //BMP180
+                    //BMP180.begin(0x77); //address of the device
+                    burstMode = false;
+                    sensorInterval = 1000; //millis
+                    ExperimentInterval = 1000; 
+                }
+                else if(sensorID[1] == 1) { //NCIR Hat
+                    //NCIR.begin(0x5A); //address of the device
+                    burstMode = false;
+                    sensorInterval = 1000; //millis
+                    ExperimentInterval = 1000; 
+                }
+                else if(sensorID[1] == 2) { //TOF Hat
+                    //TOF.begin(0x29); //address of the device
+                    burstMode = false;
+                    sensorInterval = 100; //millis
+                    ExperimentInterval = 100; 
+                    
+                }
+                 else if(sensorID[1] == 3) { //Voltmeter
+                    burstMode = false;
+                    sensorInterval = 100; //millis
+                    ExperimentInterval = 100; 
+                    
+                }
+                else{
+                    burstMode = false;
+                    sensorInterval = 1000; //millis
+                    ExperimentInterval = 1000; 
+                }
                 break;
             case 3:
                 //initialise the analog device
+                if(sensorID[1] == 0) { //NTC thermistor
+                    burstMode = false;
+                    sensorInterval = 1000; //millis
+                    ExperimentInterval = 1000; 
+                }
+                else if(sensorID[1] == 1) { //voltmeter
+                    burstMode = false;
+                    sensorInterval = 1000; //millis
+                    ExperimentInterval = 1000; 
+                }
+                else if(sensorID[1] == 2) { //ammeter
+                    burstMode = false;
+                    sensorInterval = 1000; //millis
+                    ExperimentInterval = 1000; 
+                }
+                else if(sensorID[1] == 3) { //ultrasonic distance
+                    burstMode = false;
+                    sensorInterval = 100; //millis
+                    ExperimentInterval = 100; 
+                }
+                else if(sensorID[1] == 4) { //scales
+                    burstMode = false;
+                    sensorInterval = 2000; //millis
+                    ExperimentInterval = 2000; 
+                   
+                    //initialise the scales
+                    scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+                    // The scale value is the adc value corresponding to 1g
+                    scale.set_scale(27.61f);  // set scale
+                    scale.tare();             // auto set offset
+                
+                }
+                else{
+                    burstMode = false;
+                    sensorInterval = 1000; //millis
+                    ExperimentInterval = 1000; 
+                }
                 break;
             default:
                 break;
@@ -319,10 +551,11 @@ namespace SENSOR{
        conversionFactor = atof(sensorDetails[SENSOR::sensorID[0]][SENSOR::sensorID[1]][3]);
     }
     
+    //used for smoothing averages
     const int DBufferLength = 25;
     float Dbuffer[DBufferLength] = {0.0};
-   
     int Dcounter = 0;
+
 
     void sensorRead(){
         switch(sensorID[0]){
@@ -422,9 +655,72 @@ namespace SENSOR{
                 break;
             case 2:
                 //read the I2C device
+                if(sensorID[1] == 0) { //BMP180
+                    //BMP180.readSensor();
+                   
+                }
+                else if(sensorID[1] == 1) { //NCIR Hat
+                    //NCIR.readSensor();
+                    
+                    Wire.beginTransmission(0x5A); //address of the device
+                    Wire.write(0x07); //write to the device once to see if it is there
+                    Wire.endTransmission(false); //send a repeated start
+                    Wire.requestFrom(0x5A, 2); //request 2 bytes of data from the device
+                    int rawData = Wire.read(); // Use an intermediate integer variable
+                    rawData |= Wire.read() << 8; // Read the second byte of data and shift it to the left by 8 bits
+                    sensorReadings[0] = rawData; // Assign the result back to sensorReadings[0]
+                    sensorReadings[0] = sensorReadings[0] * 0.02 - 273.15; //convert the data to degrees C
+                    
+                }
+                else if(sensorID[1] == 2) { //ToF Hat
+                    uint16_t distance = TOFsensor.readRangeContinuousMillimeters();
+                    if(TOFsensor.timeoutOccurred()) {
+                        Serial.println("Sensor timeout!");
+                    }
+                    else {
+                        if(distance > 2000){distance = 2000;}
+                        sensorReadings[0] = round((distance / 1000.0) * 1000) / 1000.0; //distance in m, rounded to 3 decimal places
+                        
+                    }
+                }
+                else if(sensorID[1] == 3) { //Voltmeter
+                    int16_t adc_raw = Vmeter.getSingleConversion();
+                    sensorReadings[0]  = adc_raw * Vresolution * Vcalibration_factor / 1000.0; //convert to volts              
+                }
                 break;
+
             case 3:
                 //read the analog device
+                if(sensorID[1] == 0) { //NTC thermistor
+                    int rawData = analogRead(33); //read the analog pin
+                    float vOut = (rawData * V_REF) / ADC_RESOLUTION; //convert to volts
+                    float R2 = (R1 * vOut) / (V_REF - vOut); //calculate the resistance of the thermistor
+                    float T = 1.0 / (log(R2 / R0) / BETA + 1.0 / T0) - 273.15; //calculate the temperature in degrees C
+                    sensorReadings[0] = T; //store the temperature in degrees C
+
+                }
+                else if(sensorID[1] == 1) { //voltmeter
+                    sensorReadings[0] = analogRead(33); //read the analog pin
+                    sensorReadings[0] = (sensorReadings[0] * 3.3) / 4095.0; //convert to volts
+                }
+                else if(sensorID[1] == 2) { //ammeter
+                    sensorReadings[0] = analogRead(33); //read the analog pin
+                    sensorReadings[0] = (sensorReadings[0] * 3.3) / 4095.0; //convert to volts
+                }
+                else if(sensorID[1] == 3) { //Ultrasonic
+                
+                    sensorReadings[0] = SONICsensor.getDistance()/1000.0; //distance in m
+                    if(sensorReadings[0] > 4.00){sensorReadings[0] = 4.00;}//4m max
+                    if(sensorReadings[0] < 0.02){sensorReadings[0] = 0.02;}//2cm min
+                }
+                else if(sensorID[1] == 4) { //scales
+                    sensorReadings[0] = scale.get_units(3); //get the weight in grams, 8 readings taken and averaged 
+                    
+                    
+                }
+                else{
+                    Serial.println("No Analog device found");
+                }
                 break;
             default:
                 break;

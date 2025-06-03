@@ -6,6 +6,7 @@
 // Create a sprite canvas
     M5Canvas canvas(&M5.Lcd);
     int DISPLAY_BRIGHTNESS = 2;
+    bool defaultDisplay = false;
     
 void DisplayInit(){
     // Set the brightness of the display
@@ -33,12 +34,13 @@ if(displayFree){    //clear the canvas
         canvas.setTextColor(WHITE, BLACK);
         canvas.printf("%02lu:%02lu:%02lu", hours, minutes, seconds);
         
-
+    defaultDisplay = true;
         // Print the sensor data to the sprite canvas
     switch (SENSOR::sensorID[0]) {
         case 0:
             canvas.setCursor(10, 23);
             if(SENSOR::sensorID[1] == 1){
+                defaultDisplay = false;
                 // Print the enitre accelerometer data to the sprite canvas
                 canvas.setTextColor(TFT_CYAN);
                 canvas.setTextSize(3);canvas.print("X:");
@@ -62,6 +64,7 @@ if(displayFree){    //clear the canvas
             
             
             else if(SENSOR::sensorID[1] == 2){
+                defaultDisplay = false;
                 canvas.setTextColor(TFT_YELLOW);
                 canvas.setTextSize(3);canvas.print("a:");
                 canvas.setTextSize(3);canvas.printf("%.2f", SENSOR::sensorReadings[0]*SENSOR::conversionFactor);
@@ -77,38 +80,13 @@ if(displayFree){    //clear the canvas
                 canvas.setTextSize(2);
                 canvas.setCursor(UnitX+50, UnitY-10);
                 canvas.printf("2");
-            } //mode 0,2
-            else if(SENSOR::sensorID[1] == 3){
-                canvas.setTextSize(3);canvas.print("velocity");
-                //canvas.setTextSize(3);canvas.printf("%.2f", SENSOR::sensorReadings[0]*SENSOR::conversionFactor);
-                
-                // Print the sensor unit to the sprite canvas
-                canvas.setTextColor(TFT_WHITE);
-                static const int UnitX = 170;
-                static const int UnitY = 100;
-                canvas.setTextSize(3);
-                canvas.setCursor(UnitX, UnitY);
-                canvas.printf("m/s");
-            } //mode 0,2
-            else if(SENSOR::sensorID[1] == 4){
-                canvas.setTextSize(3);canvas.print("displacement");
-                //canvas.setTextSize(3);canvas.printf("%.2f", SENSOR::sensorReadings[0]*SENSOR::conversionFactor);
+            } //mode 0,2     
 
-                // Print the sensor unit to the sprite canvas
-                    canvas.setTextColor(TFT_WHITE);
-                    static const int UnitX = 170;
-                    static const int UnitY = 100;
-                    canvas.setTextSize(3);
-                    canvas.setCursor(UnitX, UnitY);
-                    canvas.printf("m");
-            } //mode 0,2
-            
-
-            
                 
             break;
         case 1:     
             for(int i = 0; i < SENSOR::numberOfDevices; i++) {
+                defaultDisplay = false;
                 canvas.setCursor(10, 23+(i*23));
                 canvas.setTextColor(TFT_CYAN);
                 canvas.setTextSize(3);canvas.print("T");
@@ -130,6 +108,46 @@ if(displayFree){    //clear the canvas
         
         default:
             break;
+            
+    }
+
+    if(defaultDisplay){
+        //print the sensor name to the sprite canvas
+        canvas.setCursor(1,28);
+        canvas.setTextColor(TFT_WHITE);
+        canvas.setTextSize(2);
+        String quantitySymbol = SENSOR::sensorDetails[SENSOR::sensorID[0]][SENSOR::sensorID[1]][1];
+        int separatorIndex = quantitySymbol.indexOf('/');
+        String quantity = (separatorIndex != -1) ? quantitySymbol.substring(0, separatorIndex) : quantitySymbol;
+        canvas.print(quantity);
+
+        //print the sensor unit to the sprite canvas
+        canvas.setTextColor(TFT_WHITE);
+        canvas.setTextSize(3);
+        canvas.setCursor(15,95);
+        canvas.printf("%s", SENSOR::sensorDetails[SENSOR::sensorID[0]][SENSOR::sensorID[1]][2]);
+
+        //print the sensor value to the sprite canvas
+        canvas.setTextSize(5);
+        canvas.setCursor(15, 52);
+        canvas.setTextColor(TFT_YELLOW);
+        canvas.printf("%.2f", SENSOR::sensorReadings[0]*SENSOR::conversionFactor);
+
+        //print the burst mode to the sprite canvas
+        if(burstMode){
+            canvas.setCursor(170, 95);
+            canvas.setTextColor(TFT_GREEN);
+            canvas.setTextSize(2);
+            canvas.print("Burst:");
+            canvas.setCursor(170, 113);
+            canvas.print("PRESS");
+        }
+        else{
+            canvas.setCursor(165, 95);
+            canvas.setTextColor(TFT_WHITE);
+            canvas.setTextSize(2);
+            canvas.print("Normal");
+        }
 
     }
 
@@ -137,8 +155,8 @@ if(displayFree){    //clear the canvas
 
         
         // Print the battery percentage to the sprite canvas in green at the top right corner
-        canvas.setTextSize(3);
-        canvas.setCursor(160, 0);
+        canvas.setTextSize(2);
+        canvas.setCursor(158, 3);
         //set the text colour based on the battery percentage
         if(batteryPercentage < 20){
             canvas.setTextColor(TFT_RED);
@@ -150,6 +168,22 @@ if(displayFree){    //clear the canvas
             canvas.setTextColor(TFT_GREEN);
         }
         canvas.printf("%d%%", batteryPercentage);
+
+        //print the connection status
+        
+        if(deviceConnected){
+            canvas.setCursor(215,3);
+            canvas.setTextSize(2);
+            canvas.setTextColor(TFT_SKYBLUE);
+            canvas.print("BT");
+        }
+        else{
+            canvas.setCursor(220,2);
+            canvas.setTextSize(2);
+            canvas.setTextColor(TFT_RED);
+            canvas.print("x");
+        }
+        canvas.setTextColor(TFT_WHITE);
 
         // Push the sprite to the screen
         canvas.pushSprite(0, 0);

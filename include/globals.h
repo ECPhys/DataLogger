@@ -9,6 +9,10 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <VL53L0X.h>
+#include <Unit_Sonic.h>
+#include <M5_ADS1115.h>
+#include <HX711.h>
 
 #include "timeHelper.h"
 #include "sensorHelper.h"
@@ -47,9 +51,9 @@ void startStopButton(){
         M5.Display.setBrightness(DISPLAY_BRIGHTNESS);
         activity();
         playPause();
-
+        scale.tare();
         }
-
+    
     //long hold to reset the timer
         if(M5.BtnA.pressedFor(3000)){
             reset();
