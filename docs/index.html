@@ -26,8 +26,29 @@
     <div class="content">
         <div class="card-grid" style="display: grid; grid-template-columns: 1fr 4fr; gap: 10px;">
             <div class="card">
+                <div class="mode-controls">
+                    <h2>Mode</h2>
+                    <button id="continuousModeButton" class="modeButton">Continuous</button>
+                    <button id="burstModeButton" class="modeButton">Burst</button>
+                </div>
+                <div class="mode-controls">
+                    <h2>Interval (ms)</h2>
+                    <div id="intervalButtonsContainer" class="interval-grid"></div>
+                </div>
+                <div class="mode-controls" id="internalSensorControls" style="display: none;">
+                    <h2>Internal Sensors</h2>
+                    <div class="interval-grid">
+                        <button class="modeButton interval-button" id="sensorMic">Microphone</button>
+                        <button class="modeButton interval-button" id="sensorAcc">Accelerometer</button>
+                        <button class="modeButton interval-button" id="sensorNetAcc">Net Accel</button>
+                        <button class="modeButton interval-button" id="sensorVel">Velocity</button>
+                        <button class="modeButton interval-button" id="sensorDisp">Displacement</button>
+                        <button class="modeButton interval-button" id="sensorGyro">Gyroscope</button>
+                        <button class="modeButton interval-button" id="sensorMag">Magnetometer</button>
+                    </div>
+                </div>
                 <div id="sensorCardsContainer"></div>
-                <p class="gray-label">Last reading: <span id="sensorTimestamp"></span></p>
+                <!--<p class="gray-label">Last reading: <span id="sensorTimestamp"></span></p>-->
             </div>
             <div class="chart-container">
                 <h2 id="Graph header">Time Graph</h2>
@@ -91,6 +112,9 @@
     const connectButton = document.getElementById('connectBleButton');
     const playPauseButton = document.getElementById('playPauseButton');
     const resetButton = document.getElementById('resetTimeButton');
+    const continuousModeButton = document.getElementById('continuousModeButton');
+    const burstModeButton = document.getElementById('burstModeButton');
+    const intervalButtonsContainer = document.getElementById('intervalButtonsContainer');
     const ControlValueSent = document.getElementById('ControlValueSent');
     //const bleStateContainer = document.getElementById('bleState');
     
@@ -101,6 +125,10 @@
     //const timestampContainer = document.getElementById('timestamp1');
     //const timeValueContainer = document.getElementById('timeValueContainer');
     
+    const intervalOptions = {
+        continuous: [25, 100, 500, 1000, 5000, 10000, 60000],
+        burst: [3, 5, 10, 20, 25, 50, 100]
+    };
 
     //--------------------------Chart script--------------------------
     var ctx = document.getElementById('timeChart').getContext('2d');
@@ -405,6 +433,21 @@
         Unit = metaData[1];
         numberOfSensors = parseInt (metaData[2]);
         timeInterval = parseInt (metaData[3]);
+        const isBurstMode = metaData[4] === "1";
+        const sensorID0 = parseInt(metaData[5]);
+        const sensorID1 = parseInt(metaData[6]);
+
+        updateModeButtons(isBurstMode);
+        updateIntervalButtons(isBurstMode);
+
+        const internalSensorControls = document.getElementById('internalSensorControls');
+        if (sensorID0 === 0) {
+            internalSensorControls.style.display = 'block';
+            updateInternalSensorButtons(sensorID1);
+        } else {
+            internalSensorControls.style.display = 'none';
+        }
+
         console.log("Quantity: ", Quantity);
             //change Graph header to reflect the quantity
             document.getElementById('Graph header').innerHTML = `${Quantity} (${Unit})`;
@@ -486,6 +529,27 @@
         }
     }
 
+    // Function to update interval buttons based on mode
+    function updateIntervalButtons(isBurstMode) {
+        intervalButtonsContainer.innerHTML = '';
+        const options = isBurstMode ? intervalOptions.burst : intervalOptions.continuous;
+        
+        options.forEach(interval => {
+            const btn = document.createElement('button');
+            btn.textContent = interval;
+            btn.className = 'modeButton interval-button';
+            
+            if (interval === timeInterval) {
+                btn.classList.add('active');
+            }
+
+            btn.addEventListener('click', () => {
+                writeOnCharacteristic("I" + interval);
+            });
+            intervalButtonsContainer.appendChild(btn);
+        });
+    }
+
 
      // Function to handle incoming sensor data
      function handleSensorCharacteristicChange(event) {
@@ -531,8 +595,9 @@
             bleServiceFound.getCharacteristic(ControlCharacteristic)
             .then(characteristic => {
                 console.log("Found the Control characteristic: ", characteristic.uuid);
-                const data = new Uint8Array([value]);
-                return characteristic.writeValue(data); //previously data
+                const encoder = new TextEncoder();
+                const data = encoder.encode(value);
+                return characteristic.writeValue(data);
             })
             .then(() => {
                 console.log("Value written to Control characteristic:", value);
@@ -557,6 +622,54 @@
             timeChart.update();
             timeChart.resetZoom(); // Reset the zoom level
         }
+
+        function updateModeButtons(isBurstMode) {
+            if (isBurstMode) {
+                burstModeButton.classList.add('active');
+                continuousModeButton.classList.remove('active');
+            } else {
+                continuousModeButton.classList.add('active');
+                burstModeButton.classList.remove('active');
+            }
+        }
+
+        function updateInternalSensorButtons(sensorID1) {
+            const buttons = [
+                document.getElementById('sensorMic'),
+                document.getElementById('sensorAcc'),
+                document.getElementById('sensorNetAcc'),
+                document.getElementById('sensorVel'),
+                document.getElementById('sensorDisp'),
+                document.getElementById('sensorGyro'),
+                document.getElementById('sensorMag')
+            ];
+
+            buttons.forEach((btn, index) => {
+                if (index === sensorID1) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        }
+
+        // Mode Selection Button Event Listeners
+        continuousModeButton.addEventListener('click', () => {
+            writeOnCharacteristic("2"); // Send 2 for Continuous Mode
+        });
+
+        burstModeButton.addEventListener('click', () => {
+            writeOnCharacteristic("3"); // Send 3 for Burst Mode
+        });
+
+        // Internal Sensor Button Event Listeners
+        document.getElementById('sensorMic').addEventListener('click', () => writeOnCharacteristic("S0"));
+        document.getElementById('sensorAcc').addEventListener('click', () => writeOnCharacteristic("S1"));
+        document.getElementById('sensorNetAcc').addEventListener('click', () => writeOnCharacteristic("S2"));
+        document.getElementById('sensorVel').addEventListener('click', () => writeOnCharacteristic("S3"));
+        document.getElementById('sensorDisp').addEventListener('click', () => writeOnCharacteristic("S4"));
+        document.getElementById('sensorGyro').addEventListener('click', () => writeOnCharacteristic("S5"));
+        document.getElementById('sensorMag').addEventListener('click', () => writeOnCharacteristic("S6"));
 
         // Reset Graph Button Event Listener
         resetButton.addEventListener('click', () => {

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Colour Cycle</title>
+    <style>
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            transition: background-color 0.1s;
+        }
+        
+        .hue-display {
+            font-size: 4em;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            margin-bottom: 30px;
+        }
+        
+        .controls {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .slider {
+            width: 300px;
+            height: 10px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: linear-gradient(to right, 
+                hsl(0, 100%, 50%) 0%,
+                hsl(60, 100%, 50%) 16.66%,
+                hsl(120, 100%, 50%) 33.33%,
+                hsl(180, 100%, 50%) 50%,
+                hsl(240, 100%, 50%) 66.66%,
+                hsl(300, 100%, 50%) 83.33%,
+                hsl(360, 100%, 50%) 100%);
+            border-radius: 5px;
+            outline: none;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .auto-cycle {
+            color: white;
+            font-size: 1.2em;
+            margin-top: 10px;
+        }
+        
+        .auto-cycle input {
+            margin-right: 8px;
+            transform: scale(1.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="hue-display" id="hueDisplay">0°</div>
+    
+    <div class="controls">
+        <input type="range" class="slider" id="hueSlider" min="0" max="360" value="0">
+        <label class="auto-cycle">
+            <input type="checkbox" id="autoCycle" checked> Auto Cycle
+        </label>
+    </div>
+
+    <script>
+        let hue = 0;
+        let isAutoCycling = true;
+        
+        const hueDisplay = document.getElementById('hueDisplay');
+        const hueSlider = document.getElementById('hueSlider');
+        const autoCycleCheckbox = document.getElementById('autoCycle');
+        
+        function updateColor() {
+            document.body.style.backgroundColor = `hsl(${hue}, 100%, 50%)`;
+            hueDisplay.textContent = `${Math.round(hue)}°`;
+            hueSlider.value = hue;
+        }
+        
+        // Auto cycle functionality
+        setInterval(() => {
+            if (isAutoCycling) {
+                hue = (hue + 1) % 360;
+                updateColor();
+            }
+        }, 1000 / 30);
+        
+        // Slider control
+        hueSlider.addEventListener('input', (e) => {
+            hue = parseFloat(e.target.value);
+            updateColor();
+        });
+        
+        // Auto cycle toggle
+        autoCycleCheckbox.addEventListener('change', (e) => {
+            isAutoCycling = e.target.checked;
+        });
+        
+        // Initialize
+        updateColor();
+    </script>
+</body>
+</html>

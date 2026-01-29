@@ -142,3 +142,29 @@ canvas {
     width: 100% !important; /* Make the canvas responsive */
     height: auto !important; /* Maintain aspect ratio */
 }
+
+.modeButton {
+    background-color: #A8A8A8; /* Dark grey for inactive */
+    width: 100%;
+    margin-bottom: 5px;
+    padding: 4px 2px; /* Reduced padding */
+    margin: 2px; /* slim down the default margin */
+}
+
+.modeButton.active {
+    background-color: #3c9f15; /* Green for active */
+}
+
+.interval-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+}
+
+.interval-button {
+    font-size: 0.8rem;
+    padding: 4px 2px; /* Reduced padding */
+    min-width: auto;
+    width: 100%; /* Fill the grid cell */
+    margin: 0; /* Remove default margin */
+}

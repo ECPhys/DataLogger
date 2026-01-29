@@ -26,7 +26,31 @@ void powerOff(){
 }
 
 void batteryCheck(){
-    batteryPercentage = M5.Power.getBatteryLevel();
+    static unsigned long lastBatCheckTime = 0;
+    static const unsigned long BAT_CHECK_INTERVAL = 1000; // 1 second
+    static const int BAT_WINDOW_SIZE = 30; // 30 second rolling average
+    static int batteryReadings[BAT_WINDOW_SIZE] = {0};
+    static int readIndex = 0;
+    static unsigned long readCount = 0;
+    
+    unsigned long currentTime = millis();
+    
+    if(currentTime - lastBatCheckTime >= BAT_CHECK_INTERVAL){
+        lastBatCheckTime = currentTime;
+        
+        // Get new reading
+        batteryReadings[readIndex] = M5.Power.getBatteryLevel();
+        readIndex = (readIndex + 1) % BAT_WINDOW_SIZE;
+        readCount++;
+        
+        // Calculate average
+        int sum = 0;
+        int samples = (readCount < BAT_WINDOW_SIZE) ? readCount : BAT_WINDOW_SIZE;
+        for(int i = 0; i < samples; i++){
+            sum += batteryReadings[i];
+        }
+        batteryPercentage = sum / samples;
+    }
 }
 
 //auto power save shutdown function
@@ -48,10 +72,12 @@ void autoPowerSave(){
 void startStopButton(){
     if(!menuOpen){
         if(M5.BtnA.wasPressed()) {
-        M5.Display.setBrightness(DISPLAY_BRIGHTNESS);
-        activity();
-        playPause();
-        scale.tare();
+            M5.Display.setBrightness(DISPLAY_BRIGHTNESS);
+            activity();
+            playPause();
+            if(SENSOR::sensorID[0] == 3 && SENSOR::sensorID[1] == 4){ //if using the load cell, tare it when starting
+                scale.tare();
+            }
         }
     
     //long hold to reset the timer
@@ -111,7 +137,7 @@ if(menuOpen){  //it will call playpause if not
     activity();
     switch(menuScreen){
         case 0: //root
-            if(menuSelection == 3){ //exit
+            if(menuSelection == 4){ //exit
                 menuScreen = 0;
                 menuSelection = 0;
                 menuSelectionDelta = 0;
@@ -119,7 +145,7 @@ if(menuOpen){  //it will call playpause if not
                 displayFree = true;
                 DisplayUpdate();
             }
-            else if(menuSelection == 0){ //sensor
+            else if(menuSelection == 0){ //sensor change. Only allowed if internal sensors are being used. check this now
                 if(SENSOR::sensorID[0] != 0){
                    menuChangeDraw("External","sensor","attached"); 
                    break;    
@@ -131,7 +157,7 @@ if(menuOpen){  //it will call playpause if not
                     menuDraw();
                 }
             }
-            else {    
+            else {    //iterate to the next menu screen
                 menuScreen = menuSelection + 1;
                 menuSelection = 0;
                 menuSelectionDelta = 0;
@@ -168,7 +194,36 @@ if(menuOpen){  //it will call playpause if not
             
             }   
             break;
-        case 2: //interval
+        case 2: //burst mode
+            if(menuSelection == 2){ //exit up one level
+                menuScreen = 0;
+                menuSelection = 0;
+                menuSelectionDelta = 0;
+                menuDraw();
+            }
+            else{
+                if(menuSelection == 0){
+                    burstMode = true;
+                    buildMenuTree(); //update the interval menu
+                    sensorInterval = burstInterval; //ensure the sensor interval is set correctly
+                    menuChangeDraw("Burst Mode","enabled","");
+                }
+                else if(menuSelection == 1){
+                    burstMode = false;
+                    buildMenuTree(); //update the interval menu
+                    sensorInterval = 1000; //reset to default
+                    ExperimentInterval = sensorInterval>20 ? sensorInterval : 20; //millis (20 milliseconds seems to be the fastest for acceleration passed to the website. Too fast for the display)
+
+                    menuChangeDraw("Burst Mode","disabled","");
+                }
+                else{
+                    menuDraw();
+                }
+            }
+            break;
+        
+        
+        case 3: //interval
             if(menuSelection == 7){ //exit up one level
                 menuScreen = 0;
                 menuSelection = 0;
@@ -177,16 +232,16 @@ if(menuOpen){  //it will call playpause if not
             }
             else{
                 if(burstMode){
-                    burstInterval = String(menuTree[2][menuSelection]).toInt();  
+                    burstInterval = String(menuTree[3][menuSelection]).toInt();  
                     sensorInterval = burstInterval; 
                 }
                 else{
-                    sensorInterval = String(menuTree[2][menuSelection]).toInt();   
+                    sensorInterval = String(menuTree[3][menuSelection]).toInt();   
                     if(ExperimentInterval < sensorInterval){ // don't report data if it hasn't been remeasured
                         ExperimentInterval = sensorInterval;
                     }
                 }
-                menuChangeDraw("Interval =",menuTree[2][menuSelection],"milliseconds");
+                menuChangeDraw("Interval =",menuTree[3][menuSelection],"milliseconds");
                  //reset the menu
                 menuScreen = 0;
                 menuSelection = 0;
@@ -199,7 +254,7 @@ if(menuOpen){  //it will call playpause if not
             }
            
             break;
-        case 3: //loud or not loud
+        case 4: //loud or not loud
             if(menuSelection == 2){ //exit up one level
                 menuScreen = 0;
                 menuSelection = 0;

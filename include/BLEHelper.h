@@ -48,13 +48,54 @@ void onControlCharacteristicWrite(BLECharacteristic *pCharacteristic) {
     Serial.print("Control value parsed: ");
     Serial.println(intValue);
 
-    if (intValue == 0) {
-        reset();
-        
+    if (intValue == 'I') { // Interval command
+        std::string intervalStr = value.substr(1);
+        int newInterval = atoi(intervalStr.c_str());
+        if (newInterval > 0) {
+            if (burstMode) {
+                burstInterval = newInterval;
+                sensorInterval = burstInterval;
+            } else {
+                sensorInterval = newInterval;
+                ExperimentInterval = sensorInterval>20 ? sensorInterval : 20; //millis (20 milliseconds seems to be the fastest for acceleration passed to the website. Too fast for the display)
+
+            }
+            BLEUpdateMetadata();
+        }
     }
-    if(intValue == 1){
-        playPause();
+
+    if (intValue == 'S') { // Sensor selection command (Internal sensors)
+        std::string sensorStr = value.substr(1);
+        int newSensorID = atoi(sensorStr.c_str());
+        if (newSensorID >= 0 && newSensorID <= 6) { // Valid internal sensor IDs
+            SENSOR::sensorID[1] = newSensorID;
+            SENSOR::sensorInit(); // Re-initialize with new sensor
+            reset(); // Reset experiment
+            BLEUpdateMetadata();
+        }
+    }
+    
+    // Handle numeric commands (0-9)
+    if (intValue >= '0' && intValue <= '9') {
+        int command = intValue - '0';
         
+        if (command == 0) {
+            reset();
+        }
+        if(command == 1){
+            playPause();
+        }
+        if(command == 2){ //continuous mode
+            burstMode = false;
+            sensorInterval=1000; //reset to default interval
+            ExperimentInterval = sensorInterval>20 ? sensorInterval : 20; //millis (20 milliseconds seems to be the fastest for acceleration passed to the website. Too fast for the display)
+            BLEUpdateMetadata();
+        }
+        if(command == 3){
+            burstMode = true;
+            sensorInterval=burstInterval; //set to burst interval
+            BLEUpdateMetadata();
+        }
     }
     
 }
@@ -129,8 +170,6 @@ void BLEInit(){
     Serial.println("Waiting for a client connection to notify...");
 }
 
-
-
 //handle connections and disconnections
 void BLEConnections(){
     if (!deviceConnected && oldDeviceConnected) {
@@ -162,9 +201,9 @@ void BLENotifyAll(){
 
 //update the experiment metadata to the website
 void BLEUpdateMetadata(){
-    //[0] Quantity, [1] Unit, [2] number of devices, [3] sensor interval, [4] sensor 1 ID, [5] sensor 2 ID, [6] sensor 3 ID, [7] sensor 4 ID, [8] sensor 5 ID
+    //[0] Quantity, [1] Unit, [2] number of devices, [3] sensor interval, [4] burstMode, [5] sensorID[0], [6] sensorID[1]
     String x = "";
-    x = String(SENSOR::sensorDetails[SENSOR::sensorID[0]][SENSOR::sensorID[1]][1]) + "," + String(SENSOR::sensorDetails[SENSOR::sensorID[0]][SENSOR::sensorID[1]][2]) + "," + String(SENSOR::numberOfDevices) + "," + String(sensorInterval);
+    x = String(SENSOR::sensorDetails[SENSOR::sensorID[0]][SENSOR::sensorID[1]][1]) + "," + String(SENSOR::sensorDetails[SENSOR::sensorID[0]][SENSOR::sensorID[1]][2]) + "," + String(SENSOR::numberOfDevices) + "," + String(sensorInterval) + "," + String(burstMode) + "," + String(SENSOR::sensorID[0]) + "," + String(SENSOR::sensorID[1]);
 
     pMetadataCharacteristic->setValue((String(x)).c_str());
     pMetadataCharacteristic->notify();

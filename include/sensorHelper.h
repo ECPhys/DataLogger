@@ -23,9 +23,9 @@ void buildMenuTree();
 
 //NTC thermistor variables
 const float V_REF = 3.3; //reference voltage
-const float R1 = 14700.0; //resistor value
+const float R1 = 7874.0; //resistor value
 const int ADC_RESOLUTION = 4095; //ADC resolution
-const float BETA = 3950.0; //beta value
+const float BETA = 5560.0; //beta value
 const float R0 = 10000.0; //resistor value at 25 degrees C
 const float T0 = 298.15; //temperature at 25 degrees C
 
@@ -176,7 +176,7 @@ namespace SENSOR{
         if(fmod(burstCounter,100) == 0){
             if(loud){M5.Speaker.tone(2000, 100);}
         }
-        if(burstCounter == maxBurst){
+        if(burstCounter >= maxBurst){
             burstCounter = 0;
             displayFree = true; //unblocks the display update
             //DisplayUpdate();
@@ -266,8 +266,8 @@ namespace SENSOR{
                         
                         Vmeter.begin(&Wire, M5_UNIT_VMETER_I2C_ADDR, 32, 33, 400000U); 
                         Vmeter.setEEPROMAddr(M5_UNIT_VMETER_EEPROM_I2C_ADDR);
-                        Vmeter.setMode(ADS1115_MODE_SINGLESHOT);
-                        Vmeter.setRate(ADS1115_RATE_8);
+                        Vmeter.setMode(ADS1115_MODE_CONTINUOUS);
+                        Vmeter.setRate(ADS1115_RATE_860);
                         Vmeter.setGain(ADS1115_PGA_512);
                         // | PGA      | Max Input Voltage(V) |
                         // | PGA_6144 |        128           |
@@ -411,6 +411,8 @@ namespace SENSOR{
 
     void sensorInit(){
         
+       numberOfDevices = atoi(sensorDetails[sensorID[0]][sensorID[1]][4]);
+
        switch(sensorID[0]){
             case 0:
                 //no device connected - using internal sensors
@@ -429,7 +431,7 @@ namespace SENSOR{
                     Serial.println("Acc callibrated");
                     burstMode = true;
                     sensorInterval = burstInterval; //millis
-                    //ExperimentInterval = burstReportInterval; //millis
+                    
                 }
                 else if (sensorID[1] == 3){//report the velocity
                     M5.Imu.begin();
@@ -438,7 +440,7 @@ namespace SENSOR{
                     Serial.println("Acc callibrated");
                     burstMode = true;
                     sensorInterval = burstInterval; //millis
-                    //ExperimentInterval = burstReportInterval; //millis
+                    
                 }
                 else if (sensorID[1] == 4){//report the displacement
                     M5.Imu.begin();
@@ -447,7 +449,7 @@ namespace SENSOR{
                     Serial.println("Acc callibrated");
                     burstMode = true;
                     sensorInterval = burstInterval; //millis
-                    //ExperimentInterval = burstReportInterval; //millis
+                    
                 }
                 else{
                     burstMode = false;
@@ -487,9 +489,8 @@ namespace SENSOR{
                 }
                  else if(sensorID[1] == 3) { //Voltmeter
                     burstMode = false;
-                    sensorInterval = 100; //millis
-                    ExperimentInterval = 100; 
-                    
+                    sensorInterval = 200; //millis (have changed this from standard constant reading)
+                    ExperimentInterval = 200; 
                 }
                 else{
                     burstMode = false;
@@ -541,6 +542,9 @@ namespace SENSOR{
                 break;
             
        }
+       //set the experiment interval based on the sensor interval
+        ExperimentInterval = sensorInterval>20 ? sensorInterval : 20; //millis (20 milliseconds seems to be the fastest for acceleration passed to the website. Too fast for the display)
+
         //DisplayUpdate();
         Serial.println("Sensors Initialised");
         Serial.print("Sensor ID: "); Serial.println(sensorID[1]);
@@ -549,6 +553,9 @@ namespace SENSOR{
         Serial.print("Experiment Interval: "); Serial.println(ExperimentInterval);
         Serial.print("Burst Mode: "); Serial.println(burstMode);
        conversionFactor = atof(sensorDetails[SENSOR::sensorID[0]][SENSOR::sensorID[1]][3]);
+
+       //update the menu array dynamically
+        buildMenuTree();
     }
     
     //used for smoothing averages
@@ -569,6 +576,16 @@ namespace SENSOR{
                     sensorReadings[2] = z;
                     //sensorReadings[3] = sqrt(x*x + y*y + z*z); //magnitude
                     //sensorReadings[4] = sqrt(sensorReadings[3]*sensorReadings[3] - 1); //remove gravity )
+                    
+                    //if burst mode
+                    if(running && burstMode){
+                        burstData[burstCounter][0] = sensorReadings[0];
+                        burstData[burstCounter][1] = sensorReadings[1];
+                        burstData[burstCounter][2] = sensorReadings[2];
+                        //burstData[burstCounter][3] = sensorReadings[3];
+                        //burstData[burstCounter][4] = sensorReadings[4];
+                        burstUpdate();
+                    }
                 }
                 if(sensorID[1] == 2) {//accelerometer, just the magnitude in the y direction
                     float x,y,z,m2;
@@ -594,7 +611,7 @@ namespace SENSOR{
                     sensorReadings[0] = sum / DBufferLength;
                     //sensorReadings[0] = y; //y value magnitude
                     //burst mode!
-                    if(running){
+                    if(running && burstMode){
                         burstData[burstCounter][0] = sensorReadings[0];
                         //Serial.print(sensorReadings[0]); Serial.print(",");  
                         burstUpdate();
@@ -607,7 +624,8 @@ namespace SENSOR{
                     //x = x - callibrationDelta[0]; //x acceleration
                     //z = z - callibrationDelta[2]; //z acceleration
                     //burst mode!
-                    if(running){
+                    sensorReadings[0] = y; //report the acceleration in y for information in continuous mode
+                    if(running && burstMode){
                         if(burstCounter > 0){//calculate velocity in the y direction
                             burstData[burstCounter][1] = y; //store the acceleration in an unreported part of the array
                             burstData[burstCounter][0] = burstData[burstCounter-1][0]+9.81*burstData[burstCounter][1]*(burstInterval/1000.0); //v = u + at
@@ -621,18 +639,19 @@ namespace SENSOR{
 
                 }
                 if(sensorID[1] == 4) {// displacement in y direction
-                    float x,z,y;
+                    float x,z,y,vy,s;
                     M5.Imu.getAccelData(&x, &y, &z);
                     y = y - callibrationDelta[1]; //y acceleration
                     //x = x - callibrationDelta[0]; //x acceleration
                     //z = z - callibrationDelta[2]; //z acceleration
-                    
+
                     //burst mode!
                     if(running){
                         if(burstCounter > 0){//calculate displacement in the y direction
                             burstData[burstCounter][1] = y; //store the acceleration in an unreported part of the array
                             burstData[burstCounter][2] = burstData[burstCounter-1][2]+9.81*burstData[burstCounter][1]*(burstInterval/1000.0); //v = u + at, stored in another unused part of the burst array
                             burstData[burstCounter][0] = burstData[burstCounter-1][0]+burstData[burstCounter-1][2]*(burstInterval/1000.0)+(burstData[burstCounter][1]*(burstInterval/1000.0)*(burstInterval/1000.0))/2; //s = s + ut + 0.5at^2
+                            sensorReadings[0] = burstData[burstCounter][0]; //report the displacement in y for information in continuous mode
                         }
                         else{
                             burstData[0][0] = 0.0;
@@ -640,7 +659,9 @@ namespace SENSOR{
                             burstData[0][2] = 0.0;
                         }
                         //Serial.print(sensorReadings[0]); Serial.print(",");  
-                        burstUpdate();
+                        if(burstMode){
+                            burstUpdate(); // advances the counter and waits until the buffer is full. Putting this inside this check allows continuous mode
+                        }
                     }
                 }
                 
@@ -684,8 +705,9 @@ namespace SENSOR{
                     }
                 }
                 else if(sensorID[1] == 3) { //Voltmeter
-                    int16_t adc_raw = Vmeter.getSingleConversion();
+                    int16_t adc_raw = Vmeter.getSingleConversion(); 
                     sensorReadings[0]  = adc_raw * Vresolution * Vcalibration_factor / 1000.0; //convert to volts              
+                    
                 }
                 break;
 
@@ -726,9 +748,14 @@ namespace SENSOR{
                 break;
         }
         //DisplayUpdate(); // too often in burst mode
-        
-        //update the menu array dynamically
-        buildMenuTree();
+
+        //if burst mode (default 1 reading), update the burst data array. N/A for internals which have more complex handling
+        if(SENSOR::sensorID[0] != 0){
+            if(running && burstMode){
+                        burstData[burstCounter][0] = sensorReadings[0];
+                        burstUpdate();
+                    }
+         }
     }
 
     void callibrateAcc(){

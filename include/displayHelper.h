@@ -19,6 +19,16 @@ void DisplayInit(){
 
     //Set the font
     canvas.loadFont("ArialMT_Plain_24");    
+
+    //hello message
+    canvas.fillSprite(TFT_BLACK);
+    canvas.setTextSize(2);
+    canvas.setCursor(0, 0);
+    canvas.setTextColor(WHITE, BLACK);
+    canvas.print("Initialising...");
+
+    //push the canvas to the display
+    canvas.pushSprite(0, 0);
 }   
 
 void DisplayUpdate(){
@@ -44,20 +54,20 @@ if(displayFree){    //clear the canvas
                 // Print the enitre accelerometer data to the sprite canvas
                 canvas.setTextColor(TFT_CYAN);
                 canvas.setTextSize(3);canvas.print("X:");
-                canvas.setTextSize(3);canvas.printf("%.2f", SENSOR::sensorReadings[0]);
+                canvas.setTextSize(3);canvas.printf("% .2f", SENSOR::sensorReadings[0]);
                 
                 canvas.setCursor(10, 46);
                 canvas.setTextSize(3);canvas.print("Y:");
-                canvas.setTextSize(3);canvas.printf("%.2f", SENSOR::sensorReadings[1]);
+                canvas.setTextSize(3);canvas.printf("% .2f", SENSOR::sensorReadings[1]);
                 
                 canvas.setCursor(10, 69);
                 canvas.setTextSize(3);canvas.print("Z:");
-                canvas.setTextSize(3);canvas.printf("%.2f", SENSOR::sensorReadings[2]);
+                canvas.setTextSize(3);canvas.printf("% .2f", SENSOR::sensorReadings[2]);
             
                 canvas.setCursor(10, 92);
                 canvas.setTextColor(TFT_ORANGE);
                 canvas.setTextSize(3);canvas.print("m:");
-                canvas.setTextSize(3);canvas.printf("%.2f", SENSOR::sensorReadings[3]);
+                canvas.setTextSize(3);canvas.printf("% .2f", SENSOR::sensorReadings[3]);
                 canvas.setCursor(10, 115);
             }
                    
@@ -67,7 +77,7 @@ if(displayFree){    //clear the canvas
                 defaultDisplay = false;
                 canvas.setTextColor(TFT_YELLOW);
                 canvas.setTextSize(3);canvas.print("a:");
-                canvas.setTextSize(3);canvas.printf("%.2f", SENSOR::sensorReadings[0]*SENSOR::conversionFactor);
+                canvas.setTextSize(3);canvas.printf("% .2f", SENSOR::sensorReadings[0]*SENSOR::conversionFactor);
 
                 
                 // Print the sensor unit to the sprite canvas
@@ -92,7 +102,7 @@ if(displayFree){    //clear the canvas
                 canvas.setTextSize(3);canvas.print("T");
                 canvas.setTextSize(2);canvas.print(i+1);
                 canvas.setTextSize(3);canvas.print(":");
-                canvas.setTextSize(3);canvas.printf("%.1f", SENSOR::sensorReadings[i]);
+                canvas.setTextSize(3);canvas.printf("% .1f", SENSOR::sensorReadings[i]);
             }
                 // Print the sensor unit to the sprite canvas
                 canvas.setTextColor(TFT_WHITE);
@@ -123,7 +133,7 @@ if(displayFree){    //clear the canvas
 
         //print the sensor unit to the sprite canvas
         canvas.setTextColor(TFT_WHITE);
-        canvas.setTextSize(3);
+        canvas.setTextSize(4);
         canvas.setCursor(15,95);
         canvas.printf("%s", SENSOR::sensorDetails[SENSOR::sensorID[0]][SENSOR::sensorID[1]][2]);
 
@@ -131,22 +141,24 @@ if(displayFree){    //clear the canvas
         canvas.setTextSize(5);
         canvas.setCursor(15, 52);
         canvas.setTextColor(TFT_YELLOW);
-        canvas.printf("%.2f", SENSOR::sensorReadings[0]*SENSOR::conversionFactor);
+        canvas.printf("% .2f", SENSOR::sensorReadings[0]*SENSOR::conversionFactor);
 
         //print the burst mode to the sprite canvas
         if(burstMode){
-            canvas.setCursor(170, 95);
+            canvas.setCursor(150, 95);
             canvas.setTextColor(TFT_GREEN);
             canvas.setTextSize(2);
-            canvas.print("Burst:");
-            canvas.setCursor(170, 113);
-            canvas.print("PRESS");
+            canvas.print("Burst->");
+            canvas.setCursor(150, 113);
+            canvas.print(sensorInterval); canvas.print("ms");
         }
         else{
-            canvas.setCursor(165, 95);
+            canvas.setCursor(120, 95);
             canvas.setTextColor(TFT_WHITE);
             canvas.setTextSize(2);
-            canvas.print("Normal");
+            canvas.print("Continuous");
+            canvas.setCursor(150, 113);
+            canvas.print(sensorInterval); canvas.print("ms");
         }
 
     }
@@ -178,10 +190,10 @@ if(displayFree){    //clear the canvas
             canvas.print("BT");
         }
         else{
-            canvas.setCursor(220,2);
+            canvas.setCursor(215,3);
             canvas.setTextSize(2);
             canvas.setTextColor(TFT_RED);
-            canvas.print("x");
+            canvas.print("BT");
         }
         canvas.setTextColor(TFT_WHITE);
 
@@ -192,8 +204,9 @@ if(displayFree){    //clear the canvas
 }
 
 void callibrationRoutine(){
-    displayFree = false; // display cannot update as usual
-    canvas.fillSprite(TFT_BLACK);
+    if(SENSOR::sensorID[0]==0){
+        displayFree = false; // display cannot update as usual
+        canvas.fillSprite(TFT_BLACK);
             canvas.setCursor(10, 23);
             canvas.setTextColor(TFT_YELLOW);
             canvas.setTextSize(3);
@@ -232,7 +245,7 @@ void callibrationRoutine(){
             if(loud){M5.Speaker.tone(6000, 500);}
             displayFree = true; //unblocks the display update
 
-            
+    }  
 }
 
 void message(char msg, int size, int displayFor, bool persistAfter){
@@ -258,6 +271,14 @@ void recordingMessage(){
     canvas.setTextColor(TFT_BLACK);
     canvas.setTextSize(4);
     canvas.print("Recording");
+
+    canvas.setTextSize(3);
+    canvas.setCursor(10, 56);
+    canvas.print(maxBurst); canvas.print(" samples");
+
+    canvas.setCursor(10, 79);
+    canvas.print("@ ");canvas.print(burstInterval); canvas.print("ms");
+
     
     canvas.pushSprite(0, 0);
 }
@@ -281,29 +302,30 @@ int menuScreen = 0;
 int menuSelection = 0;
 int menuSelectionDisplayMax = 4; //show only 4 options
 int menuSelectionDelta = 0; //shifts the menu down
-String menuTree[4][8] = { //[menuScreen][menuSelection]
-    {"Sensor", "Interval", "Beep", "Exit"},
+String menuTree[5][8] = { //[menuScreen][menuSelection]
+    {"Sensor", "BurstMode","Interval", "Beep", "Exit"},
     {"Microphone", "Accelerometer", "Net Acceleration", "Velocity", "Displacement", "Gyroscope", "Magnetometer", "Exit"},
-    {"3", "5", "10", "20", "50", "100", "1000", "Exit"},
+    {"Burst mode", "Continuous", "Exit"},
+    {"3", "5", "10", "20", "50", "100", "1000", "Exit"}, //nominal. this gets replaced with intervalOptions in buildMenuTree()
     {"On", "Off", "Exit"}
 };
 String intervalOptions[2][7] = {
-    {"20", "500", "1000", "5000", "10000", "30000", "60000"}, //non burst modes (millis)
-    {"3", "5", "10", "20", "25", "50", "100"}//burse modes (millis)
+    {"25", "100", "500", "1000", "5000", "10000", "60000"}, //non burst modes (millis) default 1000ms
+    {"3", "5", "10", "20", "25", "50", "100"}//burse modes (millis) default 3ms
     
 };
 
-void buildMenuTree(){
+void buildMenuTree(){ //creates the menu when a sensor is detected or if burst mode changes, combining the two arrays above. Called in setup().
     for(int i = 0; i < 7; i++){
         menuTree[1][i] = SENSOR::sensorDetails[SENSOR::sensorID[0]][i][0];
         if(String(menuTree[1][i]).length() > 11){
             menuTree[1][i] = String(menuTree[1][i]).substring(0, 11);
         }
-        menuTree[2][i] = intervalOptions[burstMode][i];
+        menuTree[3][i] = intervalOptions[burstMode][i];
     }
 }
 
-int menuSelectionLength[4] = {4, 8, 8, 3};
+int menuSelectionLength[5] = {5, 8, 3, 8, 3};
 
 
 void menuDraw(){
@@ -367,4 +389,12 @@ void menuChangeDraw(String line1, String line2, String line3){
     }
     canvas.pushSprite(0,0);
     delay(2000);
+    //exit the menu after displaying the change
+    menuScreen = 0;
+    menuSelection = 0;
+    menuSelectionDelta = 0;
+    menuOpen = false;
+    displayFree = true;
+    DisplayUpdate();
+    canvas.pushSprite(0,0);
 }

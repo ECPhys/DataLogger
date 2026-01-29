@@ -41,8 +41,8 @@ void loop() {
     //This is the frequency of updating the sensor data
     timeKeeper(sensorLastUpdateTime, sensorInterval, SENSOR::sensorRead);
 
-    //This is the frequency of reporting the sensor data to BLE and updating the time for the display. burst stuff is redundant now
-    timeKeeper(lastExperimentUpdateTime, burstMode ? burstReportInterval : ExperimentInterval, experimentTimer);
+    //This is the frequency of reporting the sensor data to BLE and updating the time for the display.
+    timeKeeper(lastExperimentUpdateTime, ExperimentInterval, experimentTimer); //burst mode has an alternate protocol
 
     //This is the frequency of updating the display
     timeKeeper(lastDisplayUpdateTime, displayInterval, DisplayUpdate);

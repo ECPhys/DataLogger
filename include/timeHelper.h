@@ -35,7 +35,6 @@ bool burstMode = false;
 int maxBurst = 1000; //number of readings to take in burst mode
 int burstCount = 0;
 int burstInterval = 3; //millis
-unsigned long burstReportInterval = 500; //millis 
 float burstData[1000][5]; //1000 readings of 5 sensors
 
 //forward declaration of the display update function and BLE sensor update function
